@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="40mm" height="40mm" viewBox="0 0 40 40">
+  <defs><path id="unused" d="M0 0h100v100h-100Z"/></defs>
+  <g transform="translate(10 10)" stroke="#e11d48" fill="none" stroke-width="0.2">
+    <path id="Square20" d="M0 0h20v20h-20Z"/>
+    <ellipse id="RotatedEllipse" cx="10" cy="10" rx="5" ry="3" transform="rotate(30 10 10)"/>
+  </g>
+</svg>

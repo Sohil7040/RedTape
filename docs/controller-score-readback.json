@@ -1,0 +1,91 @@
+[
+  {
+    "file": "tests/fixtures/controller/2026-10-26/KEYCHAIN.RD",
+    "headers": [
+      {
+        "layer": 0,
+        "speed": 200,
+        "minPower": 1.0010376609900506,
+        "maxPower": 12.00024415552707
+      },
+      {
+        "layer": 1,
+        "speed": 30,
+        "minPower": 44.99786363913813,
+        "maxPower": 50.003051944088384
+      }
+    ],
+    "runtime": [
+      {
+        "layer": 0,
+        "airAssist": true,
+        "speed": 200,
+        "minPower": 1.0010376609900506,
+        "maxPower": 12.00024415552707
+      },
+      {
+        "layer": 1,
+        "airAssist": true,
+        "speed": 30,
+        "minPower": 44.99786363913813,
+        "maxPower": 50.003051944088384
+      }
+    ],
+    "inlinePowerOverrides": []
+  },
+  {
+    "file": "tests/fixtures/controller/2026-10-26/UNNAMEDS.RD",
+    "headers": [
+      {
+        "layer": 0,
+        "speed": 30,
+        "minPower": 49.996948055911616,
+        "maxPower": 54.996032472685094
+      }
+    ],
+    "runtime": [
+      {
+        "layer": 0,
+        "airAssist": true,
+        "speed": 30,
+        "minPower": 49.996948055911616,
+        "maxPower": 54.996032472685094
+      }
+    ],
+    "inlinePowerOverrides": []
+  },
+  {
+    "file": "tests/fixtures/controller/2026-10-26/PRL.RD",
+    "headers": [
+      {
+        "layer": 0,
+        "speed": 100,
+        "minPower": 19.99633766709394,
+        "maxPower": 19.99633766709394
+      },
+      {
+        "layer": 1,
+        "speed": 15,
+        "minPower": 69.99938961118232,
+        "maxPower": 69.99938961118232
+      }
+    ],
+    "runtime": [
+      {
+        "layer": 0,
+        "airAssist": true,
+        "speed": 100,
+        "minPower": 19.99633766709394,
+        "maxPower": 19.99633766709394
+      },
+      {
+        "layer": 1,
+        "airAssist": true,
+        "speed": 15,
+        "minPower": 69.99938961118232,
+        "maxPower": 69.99938961118232
+      }
+    ],
+    "inlinePowerOverrides": []
+  }
+]

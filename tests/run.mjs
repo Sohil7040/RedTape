@@ -1,0 +1,5 @@
+await import('./ruida.test.mjs')
+await import('./app-audit.test.mjs')
+await import('./bridge.test.mjs')
+await import('./workflow.test.mjs')
+await import('./media-import.test.mjs')

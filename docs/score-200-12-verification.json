@@ -1,0 +1,28 @@
+{
+  "note": "Offline synthetic job. Both minimum and maximum set to 12% for this test; actual last-job RDWorks minimum and file pair not supplied. No file uploaded or run.",
+  "requested": {
+    "speed": 200,
+    "minPower": 12,
+    "maxPower": 12,
+    "passes": 1
+  },
+  "decoded": {
+    "headers": [
+      {
+        "layer": 0,
+        "speed": 200,
+        "minPower": 12.00024415552707,
+        "maxPower": 12.00024415552707
+      }
+    ],
+    "runtime": [
+      {
+        "layer": 0,
+        "speed": 200,
+        "minPower": 12.00024415552707,
+        "maxPower": 12.00024415552707
+      }
+    ]
+  },
+  "bytes": 783
+}
