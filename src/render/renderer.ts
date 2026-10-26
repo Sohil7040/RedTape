@@ -118,7 +118,7 @@ function drawProductionPreview(ctx: CanvasRenderingContext2D, state: EditorState
   ctx.fillText('MACHINE ENVELOPE', left + mg + 8, top + mg - 5)
 
   // Ruida Machine Origin Corner Marker
-  const originCorner = doc.production.originCorner || 'top-right'
+  const originCorner = doc.production.originCorner || 'bottom-right'
   let ox = left + w - mg, oy = top + mg
   if (originCorner === 'top-left') { ox = left + mg; oy = top + mg }
   else if (originCorner === 'bottom-left') { ox = left + mg; oy = top + h - mg }

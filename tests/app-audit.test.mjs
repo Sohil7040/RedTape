@@ -118,7 +118,7 @@ test('independent sheets keep artwork through switch, deletion, undo and save/re
 test('partial/older project settings normalize without mutating the source; malformed projects fail',()=>{
   const d=docWith([]);d.production={layers:{}};delete d.snap
   const normalized=c.normalizeDocument(d)
-  assert.equal(normalized.production.originCorner,'top-right')
+  assert.equal(normalized.production.originCorner,'bottom-right')
   assert.equal(normalized.production.layers[d.layers[0].id].passes,1)
   assert.equal(d.production.originCorner,undefined)
   assert.throws(()=>c.normalizeDocument({...d,page:{...d.page,width:NaN}}),/dimensions/)

@@ -16,7 +16,7 @@ import {
 import { estimateJobTime, formatDuration, getProductionJob, getSimulationStateAt } from '../../core/production'
 import { buildJobDXF, buildJobJSON, buildJobPLT, buildJobRD } from '../../core/vectorIO'
 import { RUIDA_HARDWARE_LIMITS, ruidaFilename } from '../../core/ruidaIO'
-import { bridgeJSON, bytesToBase64, loadMachineProfile, PROFILE_KEY, TRANSFER_KEY, validProfile, prepareLaserJob } from '../../core/laserClient'
+import { bridgeJSON, bytesToBase64, loadMachineProfile, PROFILE_KEY, TRANSFER_KEY, validProfile, prepareLaserJob, machineOrientationIssue } from '../../core/laserClient'
 import { downloadBlob } from '../../core/exporters'
 import { NumField, ProcessNumber, Section, Segmented, SelectField, Switch } from '../ui'
 
@@ -59,7 +59,8 @@ export default function ProductionPanel({ state, store }: Props) {
   const [uploadPercent, setUploadPercent] = useState(0)
   const sendLock = useRef(false)
   const profileValid = validProfile({ ip: wifiIP, port: wifiPort })
-  const prepared = useMemo(() => prepareLaserJob(state.doc, uploadFilename), [state.doc, uploadFilename])
+  const orientationIssue = machineOrientationIssue(state.doc, {ip:wifiIP,port:wifiPort})
+  const prepared = useMemo(() => prepareLaserJob(state.doc, uploadFilename, {ip:wifiIP,port:wifiPort}), [state.doc, uploadFilename,wifiIP,wifiPort])
   useEffect(() => {
     bridgeJSON('/api/ruida/capabilities').then(data => {
       setWritesEnabled(data.writesEnabled === true); setBridgeError(null)
@@ -189,7 +190,7 @@ export default function ProductionPanel({ state, store }: Props) {
     store.setSimulation({ progress: nextP, headPos: cur.headPos, laserOn: cur.laserOn })
   }
 
-  const currentOrigin = prod.originCorner || 'top-right'
+  const currentOrigin = prod.originCorner || RUIDA_HARDWARE_LIMITS.defaultOrigin
 
   return (
     <div className="inspector-stack production-panel">
@@ -197,6 +198,7 @@ export default function ProductionPanel({ state, store }: Props) {
         {(state.workflow==='laser'?[{id:'layers' as const,label:'Operations'},{id:'settings' as const,label:'Optimization'}]:[{id:'sim' as const,label:'Summary'},{id:'machine' as const,label:'Connection'},{id:'output' as const,label:'Export'}]).map(t=><button key={t.id} className={activeTab===t.id?'active':''} aria-pressed={activeTab===t.id} onClick={()=>setActiveTab(t.id)}>{t.label}</button>)}
       </nav>
       <div className="job-overview"><strong>{state.doc.page.name}</strong><span>{job.objectCount} objects · {job.paths.length} paths · {(job.totalLength/1000).toFixed(2)} m</span></div>
+      {orientationIssue && <div className="laser-preflight" role="alert"><p className="job-warning">{orientationIssue}</p><button type="button" className="safe-export-btn" disabled={wifiSending || wifiChecking} onClick={() => store.useSavedEVAHome()}>Use corrected EVA orientation</button></div>}
       {state.workflow==='preview' && activeTab==='sim' && (
       <section className="laser-time-card" aria-label="Estimated job time">
         <div className="laser-time-head">
@@ -273,9 +275,9 @@ export default function ProductionPanel({ state, store }: Props) {
                 </button>
               </div>
 
-              <button type="button" className="link-btn" disabled={wifiSending || wifiChecking} onClick={() => { setWifiIP(RUIDA_HARDWARE_LIMITS.defaultDeviceIP); setWifiPort(RUIDA_HARDWARE_LIMITS.ruidaPort) }}>Restore saved EVA defaults</button>
+              <button type="button" className="link-btn" disabled={wifiSending || wifiChecking} onClick={() => { setWifiIP(RUIDA_HARDWARE_LIMITS.defaultDeviceIP); setWifiPort(RUIDA_HARDWARE_LIMITS.ruidaPort); store.useSavedEVAHome() }}>Restore saved EVA defaults</button>
 
-              <details className="connection-details"><summary>Profile details</summary><p>Saved EVA II 43 profile · {RUIDA_HARDWARE_LIMITS.bedWidth} × {RUIDA_HARDWARE_LIMITS.bedHeight} mm bed. Job origin is {currentOrigin}.</p><p>Verification checks a non-motion UDP handshake; it does not establish machine or material readiness.</p></details>
+              <details className="connection-details"><summary>Profile details</summary><p>Saved EVA II 43 profile · {RUIDA_HARDWARE_LIMITS.bedWidth} × {RUIDA_HARDWARE_LIMITS.bedHeight} mm bed. Output coordinate origin is {currentOrigin}; calibrated EVA orientation is bottom-right (X and Y reversed).</p><p>Verification checks a non-motion UDP handshake; it does not establish machine or material readiness.</p></details>
               {/* Safe Wi-Fi Machine Storage Transfer (Memory Download Only) */}
               <div className="wifi-storage-box" id="upload-review">
                 <div className="storage-header">
@@ -313,7 +315,7 @@ export default function ProductionPanel({ state, store }: Props) {
                   {prepared.error ? <p className="job-warning">Export blocked: {prepared.error}</p> : <p>{prepared.filename} · {(prepared.bytes!.length / 1024).toFixed(1)} KB · {job.bounds.w.toFixed(1)} × {job.bounds.h.toFixed(1)} mm · {job.paths.length} paths</p>}
                   {prepared.error?.includes('minimum laser power') && <button type="button" className="safe-export-btn" onClick={() => store.setWorkflow('laser')}>Review layer minimum / maximum power</button>}
                   {job.errors.some(e => e.includes('text object')) && <button type="button" className="safe-export-btn" onClick={() => void store.convertTextToCurves('job')}>Convert job text to curves</button>}
-                  <small>Job-local placement · origin {currentOrigin}. Check the material settings and position before starting at the cutter.</small>
+                  <small>Job-local placement · output orientation {currentOrigin}. Check the material settings and position before starting at the cutter.</small>
                   {wifiSending && <progress value={uploadPercent} max={100} aria-label="Upload progress" />}
                 </div>
                 {transferUncertain && <div className="laser-preflight">
@@ -338,24 +340,25 @@ export default function ProductionPanel({ state, store }: Props) {
           {/* Ruida Machine & Origin Setup */}
           <Section title="Path optimization & kerf" action={<span className="section-hint">DSP SETUP</span>}>
             <div className="field-row">
-              <span>Machine Zero Corner</span>
+              <span>Controller output orientation</span>
               <div className="origin-corner-picker">
                 {(['top-left', 'top-right', 'bottom-left', 'bottom-right'] as OriginCorner[]).map(corner => (
                   <button
                     key={corner}
                     className={`corner-btn ${currentOrigin === corner ? 'selected' : ''}`}
                     onClick={() => store.setProduction({ originCorner: corner })}
-                    title={`Ruida Origin: ${corner}`}
+                    title={`Output coordinate origin: ${corner}`}
                   >
                     {corner === 'top-left' && '↖ TL'}
-                    {corner === 'top-right' && '↗ TR (Ruida)'}
+                    {corner === 'top-right' && '↗ TR'}
                     {corner === 'bottom-left' && '↙ BL'}
-                    {corner === 'bottom-right' && '↘ BR'}
+                    {corner === 'bottom-right' && '↘ BR (EVA)'}
                   </button>
                 ))}
               </div>
             </div>
 
+            <p className="panel-note">The EVA profile is calibrated from JOB.RD and the physical SOHIL result: both controller axes are reversed relative to the canvas. Use BR (EVA) for upright output. This controls file coordinates, not material placement, and never changes controller parameters.</p>
             <div className="num-grid two">
               <NumField label="Rapid Speed" value={prod.rapidSpeed || 300} onChange={v => store.setProduction({ rapidSpeed: Math.max(20, v) })} suffix="mm/s" />
               <NumField label="Kerf" value={prod.kerf} onChange={v => store.setProduction({ kerf: Math.max(0, v) })} min={0} precision={2} suffix="mm" />

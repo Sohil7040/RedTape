@@ -6,8 +6,8 @@ Created: 24 October 2026. Last updated: 26 October 2026.
 
 Read [current status and documentation index](docs/CURRENT_STATUS.md) first.
 
-- Latest verified implementation: **99 JavaScript + 10 Python tests passed**; production build passed. Counts in the historical progress entries below refer to earlier checkpoints.
-- Installed desktop release: `2026-10-26T12-36-19-596Z`, serving on `http://127.0.0.1:5188`. Source remains in this folder; old releases are preserved.
+- Latest verified implementation: **102 JavaScript + 10 Python tests passed**; production build passed. Counts in the historical progress entries below refer to earlier checkpoints.
+- Installed desktop release: `2026-10-26T13-12-14-749Z`, serving on `http://127.0.0.1:5188`. Source remains in this folder; old releases are preserved.
 - Startup is intentionally blank (one sheet, no objects). Do not restore the demo or previous drawing automatically. **File → Restore last autosave** is the explicit recovery action; an untouched startup canvas does not overwrite it.
 - Knife accepts click–click/drag; circular previews use actual geometry and Apply keeps source selection. Read [the fixes and native upload audit](docs/KNIFE_PATTERN_UPLOAD_FIXES.md).
 - Image/PDF import is implemented as monochrome tracing into editable outlines or vector engraving spans. Read [the import guide](docs/IMAGE_PDF_IMPORT.md) for usage and limits; native/lossless PDF vector extraction and grayscale/dither raster output remain future scope.
@@ -15,6 +15,8 @@ Read [current status and documentation index](docs/CURRENT_STATUS.md) first.
 - Corel drawing priorities implemented: visible property bar, Knife, shared-assembly rectangular/circular patterns, simpler snapping/effect controls. Selected native Corel/RDWorks curve arithmetic is integrated, with finer machining curves, curved DXF imports and native short relative burn moves. Read `docs/RDWORKS_REVERSE_ENGINEERING.md` for evidence, metrics and limitations. No cutter access occurred.
 
 ## Progress — 26 October 2026
+
+Read-only retrieval of the actual JOB.RD and the operator’s SOHIL photo supersede the earlier top-right assumption. The observed EVA output reverses both X and Y relative to the canvas, so the calibrated output orientation is bottom-right. The previous top-right export omitted Y reversal and produced the upside-down text. UI RD preparation now blocks mismatched EVA orientation and offers **Use corrected EVA orientation**; defaults use bottom-right. No unconditional text flip was added. The corrected offline JOBFIX.RD preserves all 1,010 recovered vertices and original encoded process settings. **102 JavaScript + 10 Python tests and build pass**. No job was uploaded or physically cut during verification. See [orientation report](docs/TEXT_ORIENTATION.md).
 
 Circle sizing: NumField no longer commits untouched rounded values on blur (which could unexpectedly resize geometry). Explicit Make circle for a selected ellipse uses its current width, preserves centre/style/identity and locks proportions. Lock help distinguishes independent dimensions from proportional resizing. Browser verified unchanged-field focus creates no undo edit, 25 × 25 mm circle sizing, and undo restoration of the original two-object Audit Workflow. **99 JavaScript + 10 Python tests and build pass**. Installed release `2026-10-26T12-36-19-596Z`, served bundle `index-shWk_QUb.js`; idle local server restarted, readiness verified. No cutter access. Screenshot `docs/circle-sizing-fixed.png`.
 

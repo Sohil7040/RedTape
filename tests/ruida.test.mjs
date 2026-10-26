@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import fs from 'node:fs'
+import {createHash} from 'node:crypto'
+import opentype from 'opentype.js'
 import { fileURLToPath } from 'node:url'
 import { loadCore } from '../scripts/load-core.mjs'
 const c = await loadCore()
@@ -248,4 +250,71 @@ test('offline SVG CLI shares valid RD records and requires physical sizing', asy
     writeFileSync(input,'<svg><g transform="scale(2)"><path d="M0 0L20 20"/></g></svg>')
     await assert.rejects(convertSvgToRuida(input,output,{widthMm:20}),/untransformed/)
   } finally { rmSync(dir,{recursive:true,force:true}) }
+})
+
+test('saved EVA orientation detects vertical, horizontal and combined mismatches before preparing upload',()=>{
+ const doc=square(),profile={ip:c.RUIDA_HARDWARE_LIMITS.defaultDeviceIP,port:c.RUIDA_HARDWARE_LIMITS.ruidaPort}
+ assert.equal(c.machineOrientationIssue(doc,profile),null)
+ for(const [corner,direction] of [['top-right','upside down'],['bottom-left','left-to-right'],['top-left','left-to-right and upside down']]) {
+  doc.production.originCorner=corner
+  assert.ok(c.machineOrientationIssue(doc,profile).includes(direction))
+  const prepared=c.prepareLaserJob(doc,'ORIENT',profile)
+  assert.equal(prepared.bytes,null);assert.match(prepared.error,/Output orientation mismatch/)
+ }
+ // Other machine homes remain supported; this rule is specific to the saved EVA destination.
+ assert.equal(c.machineOrientationIssue(doc,{ip:'192.0.2.2',port:50201}),null)
+ const store=new c.EditorStore();store.loadDocument(doc)
+ const before=JSON.stringify(store.getState().doc.layers),ops=JSON.stringify(store.getState().doc.production.layers)
+ store.useSavedEVAHome();assert.equal(store.getState().doc.production.originCorner,'bottom-right')
+ assert.equal(JSON.stringify(store.getState().doc.layers),before);assert.equal(JSON.stringify(store.getState().doc.production.layers),ops)
+ assert.ok(c.prepareLaserJob(store.getState().doc,'ORIENT',profile).bytes)
+ store.undo();assert.equal(store.getState().doc.production.originCorner,'top-left')
+})
+
+
+test('asymmetric F2R glyphs stay upright through conversion and RD motion on the calibrated EVA axes established by JOB.RD and its physical result',()=>{
+ const data=fs.readFileSync(new URL('../public/fonts/LiberationSans-Bold.ttf',import.meta.url))
+ const font=opentype.parse(data.buffer.slice(data.byteOffset,data.byteOffset+data.byteLength))
+ const source=c.createTextShape(40,50,'F2R',18),t=source.text
+ const outline=c.textShapeToCurves(source,font)
+ const expected=font.getPath(t.content,t.box.x,t.box.y+t.fontSize*.82,t.fontSize,{kerning:true,letterSpacing:0,features:{liga:false,rlig:false}}).commands.filter(cmd=>cmd.x!==undefined).map(cmd=>[cmd.x,cmd.y])
+ const actual=outline.subpaths.flatMap(sub=>sub.nodes.map(n=>[n.x,n.y]))
+ for(const [x,y] of actual)assert.ok(expected.some(([a,b])=>Math.hypot(a-x,b-y)<1e-6),'Converted glyph vertex keeps font X/Y orientation')
+ for(const [x,y] of expected)assert.ok(actual.some(([a,b])=>Math.hypot(a-x,b-y)<1e-6),'Font vertex retained without vertical reflection')
+ for(const infill of [false,true]) {
+  const doc=square();doc.layers[0].shapes=[structuredClone(outline)]
+  if(infill){doc.layers[0].shapes[0].fill=c.makeFill({type:'solid',color:'#000000'});doc.layers[0].shapes[0].textInfill={enabled:true,spacing:.3}}
+  const paths=c.getProductionJob(doc).paths,points=paths.flatMap(c.toolpathPoints)
+  const x0=Math.min(...points.map(p=>p.x)),x1=Math.max(...points.map(p=>p.x)),y0=Math.min(...points.map(p=>p.y)),y1=Math.max(...points.map(p=>p.y)),width=Math.round((x1-x0)*1000),height=Math.round((y1-y0)*1000)
+  const motion=motionSegments(c.buildJobRD(doc))
+  const sourceEdges=paths.flatMap(path=>{const p=c.toolpathPoints(path);return p.slice(1).map((end,i)=>[p[i],end].map(v=>[Math.round((v.x-x0)*1000),Math.round((v.y-y0)*1000)]))})
+  const physical=motion.burn.map(edge=>edge.map(([x,y])=>[width-x,height-y]))
+  assert.equal(physical.length,sourceEdges.length)
+  physical.forEach((edge,i)=>edge.forEach((point,j)=>{
+   assert.ok(Math.abs(point[0]-sourceEdges[i][j][0])<=1,'X round-trip within one machine micron')
+   assert.ok(Math.abs(point[1]-sourceEdges[i][j][1])<=1,infill?'Upright filled text Y':'Upright outlined text Y')
+  }))
+ }
+})
+
+test('actual SOHIL JOB.RD reproduces photographed top-bar L and corrected EVA Y mapping restores it',()=>{
+ const bytes=fixture('2026-10-26-text/JOB.RD'),captured=motionSegments(bytes),parsed=c.parseRD(bytes)
+ assert.equal(bytes.length,5880);assert.equal(createHash('sha256').update(bytes).digest('hex'),'a8c302229460c06c41d1980c3d01d301f434ae16fb1ac1156a430d3a6ec46b31');assert.equal(parsed.shapes.length,8)
+ assert.deepEqual(c.selectionBounds(parsed.shapes),{x:0,y:0,w:80,h:40})
+ // This six-node L is the rightmost letter after the machine's observed X reversal.
+ const letter=parsed.shapes.find(s=>s.subpaths[0].nodes.length===6),nodes=letter.subpaths[0].nodes
+ const horizontal=nodes.map((a,i)=>[a,nodes[(i+1)%nodes.length]]).filter(([a,b])=>Math.abs(a.y-b.y)<1e-6)
+ const bar=horizontal.sort((a,b)=>Math.abs(b[0].x-b[1].x)-Math.abs(a[0].x-a[1].x))[0]
+ const bounds=c.shapeBounds(letter)
+ assert.ok(Math.abs(bar[0].y-(bounds.y+bounds.h))<1e-6,'Captured controller L has its long bar at maximum Y')
+ assert.ok(Math.abs((40-bar[0].y)-(40-bounds.y-bounds.h))<1e-6,'Observed machine Y reversal puts that bar at the top, matching the photo')
+ // Reconstruct the upright source from the captured old X-only export (TR).
+ const doc=square();doc.production.kerf=0;doc.production.optimizeTravel=false
+ doc.layers[0].shapes=parsed.shapes.map(shape=>({...shape,subpaths:c.scaleSubpaths(c.translateSubpaths(shape.subpaths,-80,0),{x:0,y:0},-1,1)}))
+ const corrected=c.buildJobRD(doc),burn=motionSegments(corrected).burn
+ const projected=burn.flatMap(edge=>edge.map(([x,y])=>[80000-x,40000-y]))
+ const source=doc.layers[0].shapes.flatMap(shape=>shape.subpaths.flatMap(sub=>sub.nodes.map(n=>[Math.round(n.x*1000),Math.round(n.y*1000)])))
+ const observed=new Set(projected.map(p=>p.join(',')))
+ for(const point of source)assert.ok(observed.has(point.join(',')),'Corrected physical coordinates preserve every original design vertex')
+ assert.ok(captured.burn.length>500);assert.ok(burn.length>500)
 })

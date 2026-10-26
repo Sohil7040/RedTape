@@ -1,3 +1,4 @@
+import { RUIDA_HARDWARE_LIMITS } from './ruidaIO'
 import { Workflow, ProductionTab, Theme, loadWorkspace, WORKSPACE_KEY } from './workspace'
 import { useSyncExternalStore } from 'react'
 import {
@@ -1113,6 +1114,10 @@ export class EditorStore {
   }
 
   /* ── Production / laser job ───────────────────────────────── */
+  useSavedEVAHome(): void {
+    this.setProduction({originCorner: RUIDA_HARDWARE_LIMITS.defaultOrigin})
+    this.toast('Corrected EVA output orientation applied. Regenerate and replace the old machine file.', 'success')
+  }
   setProduction(patch: Partial<ProductionSettings>, history = true): void {
     if (Object.values(patch).some(v => typeof v === 'number' && !Number.isFinite(v))) { this.toast('Enter a finite job setting', 'warn'); return }
     if (history) this.pushHistory('Job settings')

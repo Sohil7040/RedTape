@@ -1,0 +1,91 @@
+{
+  "input": {
+    "filename": "JOB.RD",
+    "bytes": 5880,
+    "sha256": "a8c302229460c06c41d1980c3d01d301f434ae16fb1ac1156a430d3a6ec46b31"
+  },
+  "output": {
+    "filename": "JOBFIX.RD",
+    "bytes": 5883,
+    "sha256": "f2a65e776ed478aae8d145d2fa864677a47eee827543799506c877291035bfae"
+  },
+  "contours": 8,
+  "layerIds": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    1,
+    1
+  ],
+  "matchedPhysicalVertices": 1010,
+  "originalSettings": {
+    "headers": [
+      {
+        "layer": 0,
+        "speed": 400,
+        "minPower": 12.00024415552707,
+        "maxPower": 12.00024415552707
+      },
+      {
+        "layer": 1,
+        "speed": 30,
+        "minPower": 50.003051944088384,
+        "maxPower": 50.003051944088384
+      }
+    ],
+    "runtime": [
+      {
+        "layer": 0,
+        "airAssist": true,
+        "speed": 400,
+        "minPower": 12.00024415552707,
+        "maxPower": 12.00024415552707
+      },
+      {
+        "layer": 1,
+        "airAssist": true,
+        "speed": 30,
+        "minPower": 50.003051944088384,
+        "maxPower": 50.003051944088384
+      }
+    ],
+    "inlinePowerOverrides": []
+  },
+  "correctedSettings": {
+    "headers": [
+      {
+        "layer": 0,
+        "speed": 400,
+        "minPower": 12.00024415552707,
+        "maxPower": 12.00024415552707
+      },
+      {
+        "layer": 1,
+        "speed": 30,
+        "minPower": 50.003051944088384,
+        "maxPower": 50.003051944088384
+      }
+    ],
+    "runtime": [
+      {
+        "layer": 0,
+        "airAssist": true,
+        "speed": 400,
+        "minPower": 12.00024415552707,
+        "maxPower": 12.00024415552707
+      },
+      {
+        "layer": 1,
+        "airAssist": true,
+        "speed": 30,
+        "minPower": 50.003051944088384,
+        "maxPower": 50.003051944088384
+      }
+    ],
+    "inlinePowerOverrides": []
+  },
+  "note": "Reconstructed from RD polylines; kerf disabled to avoid double compensation. Same encoded process settings, one copy of each captured contour, corrected output-axis mapping. Not uploaded."
+}

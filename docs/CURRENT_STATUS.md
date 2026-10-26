@@ -4,9 +4,9 @@ Updated 26 October 2026. This is the current entry point; dated reports retain t
 
 ## Verified release
 
-- Linux desktop release: `2026-10-26T12-36-19-596Z`.
-- Served JavaScript bundle: `index-shWk_QUb.js`; desktop URL: `http://127.0.0.1:5188`.
-- Verification: **109 tests passed — 99 JavaScript and 10 Python**; TypeScript/production build and whitespace checks passed. Vite still reports its large-bundle advisory.
+- Linux desktop release: `2026-10-26T13-12-14-749Z`.
+- Served JavaScript bundle: `index-BCPKd7zt.js`; desktop URL: `http://127.0.0.1:5188`.
+- Verification: **112 tests passed — 102 JavaScript and 10 Python**; TypeScript/production build and whitespace checks passed. Vite still reports its large-bundle advisory.
 - Source and previous installed releases are preserved. Browser and desktop profiles have separate local autosaves. Reopen/reload an existing app window after an update.
 
 ## Startup and recovery
@@ -18,6 +18,8 @@ The untouched startup document does not overwrite the previous autosave. Use **F
 ![Clean startup](clean-startup.png)
 
 ## Latest drawing fixes
+
+Read-only retrieval of the actual JOB.RD and the operator’s SOHIL photo supersede the earlier top-right assumption. The observed EVA output reverses both X and Y relative to the canvas, so the calibrated output orientation is bottom-right. The previous top-right export omitted Y reversal and produced the upside-down text. UI RD preparation now blocks mismatched EVA orientation and offers **Use corrected EVA orientation**; defaults use bottom-right. No unconditional text flip was added. The corrected offline JOBFIX.RD preserves all 1,010 recovered vertices and original encoded process settings. **102 JavaScript + 10 Python tests and build pass**. No job was uploaded or physically cut during verification. See [orientation report](TEXT_ORIENTATION.md).
 
 **Circle dimensions:** Transform → Make circle (W = H) turns a selected ellipse into a true circle using its current width as diameter and preserving centre/style/identity. It locks proportions so either dimension resizes the circle. For independent width/height, turn off Lock aspect ratio. Locking an oval preserves its current proportions; it does not make it circular. Untouched numeric fields no longer commit rounded display values on blur, and Escape cancels a pending numeric edit. Browser checked no-op focus/blur, 25 × 25 mm sizing and undo restoration.
 
@@ -49,6 +51,7 @@ Image/PDF import renders and monochrome-traces into editable vectors; native/los
 | [Knife/pattern/upload report](KNIFE_PATTERN_UPLOAD_FIXES.md) | Latest drawing repairs, screenshots and test coverage |
 | [Native upload evidence](reverse-engineering/upload-2026-10-26/FINDINGS.md) | Recovered routines, evidence IDs and unresolved runtime questions |
 | [Native curve report](RDWORKS_REVERSE_ENGINEERING.md) | Integrated arithmetic, measured geometry and evidence limits |
+| [Text orientation](TEXT_ORIENTATION.md) | Upside-down output reproduction, machine-home repair and asymmetric text tests |
 | [Path/scoring comparison](RDWORKS_COMPARISON.md) | Contour-only output, minimum/maximum power and native reference files |
 | [Image/PDF guide](IMAGE_PDF_IMPORT.md) | Import modes, dimensions, tracing and limitations |
 | [UI redesign report](ui-redesign-report.md) | Workspace redesign checkpoint and screenshots |

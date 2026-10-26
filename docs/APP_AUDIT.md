@@ -2,9 +2,9 @@
 
 ## Follow-up — 26 October 2026
 
-Latest implementation verification: **99 JavaScript + 10 Python tests passed**, production build passed. Counts in earlier entries below describe those earlier checkpoints.
+Latest implementation verification: **102 JavaScript + 10 Python tests passed**, production build passed. Counts in earlier entries below describe those earlier checkpoints.
 
-Current installed release: `2026-10-26T12-36-19-596Z`, served bundle `index-shWk_QUb.js`, port 5188. Startup opens a blank sheet; **File → Restore last autosave** explicitly recovers the previous local session. The untouched blank startup is not autosaved over previous work. See [current status](CURRENT_STATUS.md) for present behavior and limitations.
+Current installed release: `2026-10-26T13-12-14-749Z`, served bundle `index-BCPKd7zt.js`, port 5188. Startup opens a blank sheet; **File → Restore last autosave** explicitly recovers the previous local session. The untouched blank startup is not autosaved over previous work. See [current status](CURRENT_STATUS.md) for present behavior and limitations.
 
 ## Historical implementation checkpoints
 
@@ -133,3 +133,7 @@ Removed automatic showcase/autosave opening. Startup now uses one empty sheet wi
 ## Circle sizing — 26 October 2026
 
 Fixed numeric-field blur applying rounded display values despite no edit. Added explicit Make circle for single ellipses: current width becomes diameter, centre and appearance are preserved, and proportional sizing is enabled. Clarified aspect locking, which preserves an oval ratio rather than forcing equal dimensions. Browser verified no added undo edit on unchanged field focus/blur, 25 × 25 mm dimensions and restoration of the original artwork. **99 JavaScript + 10 Python tests and production build pass**. Current installed version is listed above. No cutter access.
+
+## Upside-down text — 26 October 2026
+
+Read-only retrieval of the actual JOB.RD and the operator’s SOHIL photo supersede the earlier top-right assumption. The observed EVA output reverses both X and Y relative to the canvas, so the calibrated output orientation is bottom-right. The previous top-right export omitted Y reversal and produced the upside-down text. UI RD preparation now blocks mismatched EVA orientation and offers **Use corrected EVA orientation**; defaults use bottom-right. No unconditional text flip was added. The corrected offline JOBFIX.RD preserves all 1,010 recovered vertices and original encoded process settings. **102 JavaScript + 10 Python tests and build pass**. No job was uploaded or physically cut during verification. See [orientation report](TEXT_ORIENTATION.md).

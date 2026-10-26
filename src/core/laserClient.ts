@@ -15,9 +15,20 @@ export function loadMachineProfile(): MachineProfile {
   try { const p = JSON.parse(localStorage.getItem(PROFILE_KEY) ?? 'null'); return p && validProfile(p) ? p : fallback }
   catch { return fallback }
 }
-export function prepareLaserJob(doc: DocumentModel, filename: string) {
+/** EVA output-axis calibration is based on JOB.RD readback and the physical SOHIL result. */
+export function machineOrientationIssue(doc: DocumentModel, profile: MachineProfile): string | null {
+  if (profile.ip !== RUIDA_HARDWARE_LIMITS.defaultDeviceIP || profile.port !== RUIDA_HARDWARE_LIMITS.ruidaPort) return null
+  const actual = doc.production.originCorner, expected = RUIDA_HARDWARE_LIMITS.defaultOrigin
+  if (actual === expected) return null
+  if (!['top-left','top-right','bottom-left','bottom-right'].includes(actual)) return 'Output orientation mismatch: apply the corrected EVA orientation, then regenerate the job.'
+  const axes = [actual.endsWith('right') !== expected.endsWith('right') ? 'left-to-right' : '', actual.startsWith('bottom') !== expected.startsWith('bottom') ? 'upside down' : ''].filter(Boolean).join(' and ')
+  return `Output orientation mismatch: this job uses ${actual}, but the calibrated EVA profile uses ${expected}. Output would be ${axes}. Apply the corrected EVA orientation, then regenerate the job.`
+}
+export function prepareLaserJob(doc: DocumentModel, filename: string, profile?: MachineProfile) {
   const job = getProductionJob(doc)
   try {
+    const orientation = profile ? machineOrientationIssue(doc, profile) : null
+    if (orientation) throw new Error(orientation)
     const name = ruidaFilename(filename) + '.RD'
     const bytes = buildJobRD(doc, name)
     if (bytes.length > 32 * 1024 * 1024) throw new Error('RD file exceeds the 32 MiB transfer limit')

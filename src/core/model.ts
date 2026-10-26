@@ -259,7 +259,7 @@ export function defaultProduction(layers: Layer[]): ProductionSettings {
     overcut: 0,
     optimizeOrder: true,
     insideOut: true,
-    originCorner: 'top-right',
+    originCorner: 'bottom-right',
     rapidSpeed: 300,
     timeAllowancePct: 0,
     startX: 8,

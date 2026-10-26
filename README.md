@@ -4,7 +4,7 @@ A vector design and laser job preparation app with Bézier editing, snapping, Kn
 
 ![Corelith clean startup](docs/clean-startup.png)
 
-Current verified state: **109 tests passed** (99 JavaScript + 10 Python), production build passed. Installed Linux release: `2026-10-26T12-36-19-596Z`. See [current status and documentation index](docs/CURRENT_STATUS.md) and [next-session handoff](NEXT_SESSION.md).
+Current verified state: **112 tests passed** (102 JavaScript + 10 Python), production build passed. Installed Linux release: `2026-10-26T13-12-14-749Z`. See [current status and documentation index](docs/CURRENT_STATUS.md) and [next-session handoff](NEXT_SESSION.md).
 
 ## Run it
 
@@ -81,6 +81,8 @@ Set each layer's operation, speed, minimum/maximum power, passes and air assist 
 **Power controls:** both sidebars show the same effective maximum. Reducing maximum power also reduces a stale higher minimum; it never raises the maximum to match a minimum. Minimum edits are bounded by the maximum. Older projects missing explicit power bounds derive them from saved power, instead of an unrelated default. Explicitly invalid saved bounds still block export with the layer name and both values: use **Review layer minimum / maximum power**, then correct the values or click **Reduce minimum**. Origin/placement guidance is informational and independent of power validation.
 
 Power fields commit on Enter or blur, so intermediate digits cannot alter linked minimum power. Changing a layer to Score/Cut/Engrave preserves entered process settings; material presets remain an explicit way to replace them. To match a working RDWorks score, compare speed, minimum power, maximum power, passes and air assist. Score uses vector cut motion. See [the RDWorks comparison](docs/RDWORKS_COMPARISON.md) and the read-only `scripts/inspect-rd-settings.mjs` tool.
+
+Read-only retrieval of the actual JOB.RD and the operator’s SOHIL photo supersede the earlier top-right assumption. The observed EVA output reverses both X and Y relative to the canvas, so the calibrated output orientation is bottom-right. The previous top-right export omitted Y reversal and produced the upside-down text. UI RD preparation now blocks mismatched EVA orientation and offers **Use corrected EVA orientation**; defaults use bottom-right. No unconditional text flip was added. The corrected offline JOBFIX.RD preserves all 1,010 recovered vertices and original encoded process settings. **102 JavaScript + 10 Python tests and build pass**. No job was uploaded or physically cut during verification. See [orientation report](docs/TEXT_ORIENTATION.md).
 
 **Contour entry:** **Laser → Optimization → Entry, exit & overcut → Contour only** is the default, including for older projects with saved lead lengths. Burning starts on the design; initial travel remains laser-off. Optional **Outer outlines only** enables configured leads on outer contours while keeping internal cuts free of leads. **All closed contours** explicitly enables them on internal contours too. Rapid optimization chooses nearby existing starting vertices without changing contour winding or dimensions. Regenerate previously exported/uploaded RD files to apply these changes.
 

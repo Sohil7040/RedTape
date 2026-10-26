@@ -7,7 +7,7 @@ import { DocumentModel, Shape, makeShape, makeFill, makeStroke, RDWORKS_PALETTE 
 import { getProductionJob, toolpathPoints } from './production'
 import { scrambleRuidaWasm, unscrambleRuidaWasm } from '../wasm/wasmEngine'
 
-// Ruida controller hardware safety limits audited directly from soft.ini, vpara, and upara
+// Hardware limits from local configuration; output orientation calibrated against JOB.RD + physical SOHIL result.
 export const RUIDA_HARDWARE_LIMITS = {
   bedWidth: 1220.0, // mm (X-Axis max travel from vpara & soft.ini)
   bedHeight: 915.0, // mm (Y-Axis max travel from vpara & soft.ini)
@@ -15,7 +15,7 @@ export const RUIDA_HARDWARE_LIMITS = {
   safeRapidSpeed: 300.0, // mm/s (Default rapid from upara/soft.ini)
   maxPowerPct: 99.0, // % (Strict maximum power from upara/vpara to protect laser tube)
   minPowerPct: 1.0, // %
-  defaultOrigin: 'top-right' as const, // Origin = 2 in soft.ini (Top-Right machine home)
+  defaultOrigin: 'bottom-right' as const, // JOB.RD readback + physical SOHIL photo establish reversed X and Y output axes.
   stepPitchX: 6.325810, // um/pulse
   stepPitchY: 6.323320, // um/pulse
   ruidaPort: 50201, // Upload/handshake port verified on this controller
