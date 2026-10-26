@@ -1,4 +1,4 @@
-> Current app workflow and subsequent repairs: see [APP_AUDIT.md](APP_AUDIT.md). The sections below retain the original file-repair audit and its authorized upload follow-up. TCP checks and the old lack of an upload handshake were replaced in the subsequent app audit.
+> Updated: 26 October 2026. Current app workflow and subsequent repairs: see [APP_AUDIT.md](APP_AUDIT.md). The original file-repair audit and authorized upload are retained below as historical evidence. Later implementation verification passed 60 JavaScript + 10 Python tests and the production build; those checks do not establish physical cutting accuracy or automatic LCD refresh.
 
 # Ruida file and transfer audit — 24 October 2026
 
@@ -50,7 +50,7 @@ The new uploader uses one selected UDP port (default 50201), prefixes download p
 
 Writes are disabled by default in the bridge and Python uploader. The UI reflects this and initially reports connection state as unknown. TCP reachability is labeled accurately and is not proof of UDP protocol readiness or controller identity. The dev server binds to localhost. Neither test suite contacts the controller; UDP behavior is mocked and bridge write rejection is tested in memory.
 
-For a separately authorized future transfer, the operator can opt in when launching the dev server with `RUIDA_ALLOW_WRITES=1 npm run dev`. The standalone uploader requires `--allow-write`. Neither opt-in was used during this audit. `npm run preview` only serves static files and does not provide the device bridge.
+Current launch behaviour: `npm run dev` and `npm run preview` both provide the bridge in read-only mode. `npm run laser` enables explicit storage uploads on port 5178; `npm run laser:preview` serves the production build with uploads enabled on port 5179. The installed desktop app serves its bundled build and upload bridge on port 5188. The standalone uploader requires `--allow-write`. No launch mode automatically sends a job; the operator must explicitly request an upload. These opt-ins were not used during the initial read-only audit.
 
 ## Verification and local artifacts
 
@@ -68,4 +68,16 @@ The CLI accepts untransformed paths (M/L/H/V/C/S/Z), rectangles and circles, rej
 
 ## Authorized upload follow-up
 
-After the read-only audit, the user explicitly requested a storage upload and authorized UDP probing. Port 50200 did not acknowledge; port 50201 acknowledged the non-motion handshake and every upload packet. GEN100.RD was stored as index 81. Read-only FTP retrieval returned exactly the local 6,271 bytes (SHA-256 `af0c15cc2a1e17c626b0a60b97de425011ef89a7a3c91156021735c414c70600`). The app, bridge and uploader now default to 50201 for this controller. No job-start, frame or firing command was sent. Physical LCD, frame and cutting behavior still await the operator's check.
+After the read-only audit, the user explicitly requested a storage upload and authorized UDP probing. Port 50200 did not acknowledge; port 50201 acknowledged the non-motion handshake and every upload packet. GEN100.RD was stored as index 81. Read-only FTP retrieval returned exactly the local 6,271 bytes (SHA-256 `af0c15cc2a1e17c626b0a60b97de425011ef89a7a3c91156021735c414c70600`). The app, bridge and uploader now default to 50201 for this controller. No job-start, frame or firing command was sent. The operator subsequently reported that the uploaded job worked. That report applies to the earlier transfer; subsequent path, scoring and import repairs have not received a new physical comparison cut.
+
+## LCD file-list refresh — 26 October 2026
+
+The operator reports that newly uploaded files appear after pressing Esc and reopening File on the cutter. This is consistent with a stale panel file list/current preview, but the panel's internal refresh mechanism was not measured. Verified storage and an updated LCD are separate outcomes.
+
+Corelith uploads the prepared RD file, checks packet acknowledgements and performs read-only FTP readback when requested (automatic in the app). It does not then send remote panel Escape keys, select a stored job or start processing. The UI now shows the uploaded filename, available file index and verification status, followed by **Esc → File → select the uploaded filename**. Reopening the menu is the operator-reported workaround.
+
+Review of the [Ruida command dictionary](https://github.com/kkaempf/ruida/blob/master/doc/commands.md) and [Meerk40t's Ruida emulator](https://github.com/meerk40t/meerk40t/blob/main/meerk40t/ruida/emulator.py) did not establish a verified refresh-only command for this firmware. Document queries, job selection and job start must not be assumed to be interchangeable. Automatic LCD refresh remains **unimplemented and unverified**. Further investigation needs vendor confirmation or a captured RDWorks transfer showing the relevant sequence before changing the known-working uploader. No controller commands were sent during this refresh investigation.
+
+## Image/PDF output boundary
+
+The new image/PDF importer produces ordinary vector contours or monochrome vector engraving spans before RD generation. It adds no native raster command mode and makes no transport changes. PDF pages are rendered then traced; original PDF vectors/layers are not preserved. See [the image/PDF guide](IMAGE_PDF_IMPORT.md) for sizing, detail limits and verification.

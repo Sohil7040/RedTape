@@ -32,11 +32,12 @@ npm run preview   # serve the production build
 The **Laser** inspector turns artwork into a machine-ready job:
 
 - **Layer power map** — each layer can be `Cut`, `Engrave`, `Score` or `Ignore`, with independent speed (mm/s), power (%) and pass count. Operation badges appear in the layer tree.
-- **Toolpath generation** — flattened geometry, kerf compensation (centre / outside / inside), tangent lead-ins and lead-outs, and scanline hatching for filled engrave regions.
+- **Toolpath generation** — flattened geometry, kerf compensation (centre / outside / inside), optional lead-ins and lead-outs (off by default), and scanline hatching for filled engrave regions.
 - **Machine sequencing** — engrave → score → cut grouping with nearest-neighbour rapid optimisation, machine-origin addressing and start-point markers.
 - **Production preview** — dark material view with colour-coded toolpaths, kerf bands, lead-ins, sequence labels, ghosted source geometry, machine envelope and live path length/time estimates.
 - **Sheet nesting** — shelf-packing with material margin, spacing and optional 90° rotation; placement is undoable.
 - **Shop file exchange** — import `DXF` (`LINE`, `LWPOLYLINE` with bulges, `POLYLINE`, `CIRCLE`, `ARC`) and `PLT/HPGL`; export `DXF` (Y-up, named process layers), `PLT` and a `.laser-job.json` handoff package.
+- **Image/PDF preparation** — preview a selected PDF page or image, set physical size and threshold, then import editable cutting outlines or vector engraving lines.
 - **Preflight warnings** — skipped text objects, open cut contours, missing cut process, hatching limits and geometry outside the sheet.
 
 Open the **Laser** tab in the inspector or press `Shift+Ctrl/Cmd+L`. Icons in the layer tree show the active process for each layer. Import is available from **File → Import vectors / image / PDF** or from the Laser output section.
@@ -45,7 +46,9 @@ Open the **Laser** tab in the inspector or press `Shift+Ctrl/Cmd+L`. Icons in th
 
 PNG, JPEG, WebP, BMP, GIF (one frame) and PDF files open a preview before changing the drawing. Select a PDF page, width in millimeters (height stays proportional), dark threshold and optional inversion. **Filled engraving** creates horizontal vector scan lines on an Engrave layer; **Trace outlines** creates closed boundaries, including holes, on a Cut layer. Review layer speed and minimum/maximum power before exporting. Imports are local, undoable and saved as editable vector paths; the original file is not required when reopening the project. White/transparent gaps are not joined with burning lines.
 
-PDF pages are rendered with bundled PDF.js, then monochrome traced; original PDF Bézier curves, layers and color separation are not preserved. This is not native grayscale/dither photo engraving or lossless PDF vector extraction. For precision vector parts, prefer SVG or DXF. Rendering uses at most 1024 pixels on the longest side; small details can be lost, so inspect the preview at the intended physical size. PDF page dimensions are used for the initial size, reduced to fit the active sheet when necessary. Images initially use 96 DPI sizing, reduced to fit; embedded print-DPI metadata is not applied. You can enter the intended width explicitly. Limits: 50 MB files, 40 megapixel source images, 1000 PDF pages, 10,000 trace paths, 80,000 retained nodes. Password-protected PDFs must be unlocked before import.
+PDF pages are rendered with bundled PDF.js, then monochrome traced; original PDF Bézier curves, layers and color separation are not preserved. This is not native grayscale/dither photo engraving or lossless PDF vector extraction. For precision vector parts, prefer SVG or DXF. Rendering uses at most 1024 pixels on the longest side; small details can be lost, so inspect the preview at the intended physical size. PDF page dimensions are used for the initial size, reduced to fit the active sheet when necessary. Images initially use 96 DPI sizing, reduced to fit; embedded print-DPI metadata is not applied. You can enter the intended width explicitly. Limits: 50 MiB files, 40 megapixel source images, 1000 PDF pages, 10,000 trace paths, 80,000 retained nodes. Password-protected PDFs must be unlocked before import.
+
+See [the image/PDF import guide](docs/IMAGE_PDF_IMPORT.md) for steps, engraving spacing, mode differences, limits and troubleshooting. Import one PDF page at a time. Reimport to change tracing settings after accepting an import; the project stores the resulting paths, not an editable source bitmap.
 
 After a storage upload, the cutter LCD may continue showing the current design or a cached file list. **Esc → File → select the uploaded filename** reloads the list/preview on this controller. Corelith reports the stored filename and readback status, and never auto-starts or remotely changes the panel selection. No verified refresh-only command has been established for this firmware.
 
@@ -84,7 +87,7 @@ The saved EVA II 43 profile is **192.168.1.11 / UDP 50201**, confirmed by the wo
 
 Use `.rd` for the controller and `.dxf` to exchange supported geometry with RDWorks. Native `.rld` export is unavailable; older Corelith-generated `.rld` files were not native RDWorks documents. RD import recovers vector motion for inspection and warns that orientation/process settings must be reviewed.
 
-Simulation and RD/DXF/PLT export share lead geometry and pass counts. Imports preserve physical dimensions; sheets own separate artwork; SVG supports units/viewBox, transformed curves and compound fills. Incomplete or unsupported jobs show errors instead of silently exporting a partial job.
+Simulation and RD/DXF/PLT export share lead geometry and pass counts. Vector-file imports preserve physical dimensions and warn about oversized artwork; image/PDF imports offer an explicit size preview with an initial fit to the sheet. Sheets own separate artwork; SVG supports units/viewBox, transformed curves and compound fills. Incomplete or unsupported jobs show errors instead of silently exporting a partial job.
 
 See [the app audit and full workflow](docs/APP_AUDIT.md) for repaired faults, verification and remaining scope, and [the protocol evidence](docs/RUIDA_PROTOCOL_SPECIFICATION.md) for the original RD file repair. The earlier hardware-verified sample remains unchanged in `corrected/`. Follow-up repairs were verified offline and in the browser; no additional file was sent to the cutter during the audit.
 
@@ -163,6 +166,8 @@ src/
     geometry.ts    Bézier kernel, flattening, intersections, area centroid, offsets
     production.ts  kerf toolpaths, lead-ins, hatching, ordering, nesting, estimates
     vectorIO.ts    DXF / HPGL parsing and DXF / PLT / job export
+    mediaImport.ts local image decoding and selected PDF page rendering
+    bitmapTrace.ts monochrome outline tracing and vector engraving spans
     model.ts       document/page/layer/shape styles + showcase composition
     store.ts       central editor state, undo/redo, node and selection operations
     snapping.ts    candidate generation, gravity arbiter, dynamic alignment
@@ -173,6 +178,7 @@ src/
     renderer.ts    canvas scene passes, overlays, rulers, screen tips
   components/
     CanvasStage    pointer/keyboard interaction state machine
+    MediaImportModal image/PDF preview, size, threshold and engraving controls
     panels/        Design, Snapping, Patterns inspectors
 ```
 
@@ -183,3 +189,13 @@ World geometry is stored in millimetres. The viewport transform is applied only 
 The project is a self-contained prototype, not a CorelDRAW binary port or machine driver. Sheets have independent artwork and editable polygon Boolean operations; native RDWorks document serialization and native raster scanning are not included. Mesh fills are a four-corner bilinear approximation rather than a full editable subdivision mesh. Use the built-in text-to-curves action before machining supported text; DXF SPLINE/blocks and HPGL arc commands are not imported yet. Engrave hatching is a scanline approximation that respects compound fill rules; its generation budget is enforced by preflight. The goal is faithful, inspectable interactive geometry for the systems explicitly covered by the architecture report.
 
 Everything runs locally in the browser. Projects/autosaves are stored in `localStorage` and can be exported as JSON.
+
+## Documentation and latest verification
+
+As of 26 October 2026, the last implementation checks passed **60 JavaScript + 10 Python tests** and the production build. The installed desktop release is `2026-10-26T09-26-44-613Z`; image/PDF rendering was checked in both development and that production build. These checks do not establish physical cutting accuracy or automatic LCD refresh.
+
+- [Image/PDF import guide](docs/IMAGE_PDF_IMPORT.md): usage, tracing limits and troubleshooting.
+- [App audit](docs/APP_AUDIT.md): repaired faults, workflow and verification history.
+- [RDWorks comparison](docs/RDWORKS_COMPARISON.md): path and scoring evidence.
+- [Ruida protocol evidence](docs/RUIDA_PROTOCOL_SPECIFICATION.md): transport, storage and LCD limitations.
+- [Next-session handoff](NEXT_SESSION.md): current state, installed release and remaining work.

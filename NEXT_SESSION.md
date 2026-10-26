@@ -1,6 +1,14 @@
 # Corelith Studio — next-session roadmap
 
-Saved: 24 October 2026.
+Created: 24 October 2026. Last updated: 26 October 2026.
+
+## Current handoff
+
+- Latest verified implementation: **60 JavaScript + 10 Python tests passed**; production build passed. Counts in the historical progress entries below refer to earlier checkpoints.
+- Installed desktop release: `2026-10-26T09-26-44-613Z`, serving on `http://127.0.0.1:5188`. Source remains in this folder; old releases are preserved.
+- Image/PDF import is implemented as monochrome tracing into editable outlines or vector engraving spans. Read [the import guide](docs/IMAGE_PDF_IMPORT.md) for usage and limits; native/lossless PDF vector extraction and grayscale/dither raster output remain future scope.
+- Automatic cutter LCD refresh remains unresolved. Current guidance is **Esc → File → select uploaded filename**. Do not claim the panel refresh is fixed or send undocumented selection/start commands.
+- Documentation-only follow-up reconciled README, app audit, protocol notes and this handoff; no runtime changes, new test run, installation or cutter access were needed for that documentation update.
 
 ## Progress — 26 October 2026
 
@@ -8,9 +16,11 @@ Image/PDF import: File and Laser import controls now accept PNG/JPEG/WebP/BMP/GI
 
 LCD follow-up: user reports newly sent files appear after Esc and reopening File. Storage upload/readback does not explicitly select a panel job or refresh its open menu. Protocol reference review did not establish a verified refresh-only command for this firmware. Added persistent guidance and filename-specific upload success instructions: **Esc → File → select uploaded filename**. Automatic LCD refresh is **not implemented or physically verified**; do not claim it is fixed. No remote Escape/select/start commands or controller index edits were added. If investigating further, use a vendor-confirmed command or a captured RDWorks transfer before changing the known-working upload sequence.
 
+Desktop import release: installed `~/.local/share/corelith-studio/releases/2026-10-26T09-26-44-613Z`, restarted only the verified idle prior backend, and passed launcher `--check`. Browser verified the production desktop server on port 5188 renders both PDF pages with its bundled worker and correct page aspect ratio (70.56 × 42.34 mm for the fixture). Final screenshot is from the installed build. Temporary test tab closed; source, older installed releases and original source drawing preserved.
+
 Additional burn-only verification: an independent absolute/relative motion decoder confirms native RDWorks `20MMSQR.RD` and Corelith's square cover only the intended perimeter. Outer rectangle + inner hole + separate score, two passes at all four origins, have exact intended burn coverage and six laser-off positioning moves, without entry/exit burns in Contour only mode even with saved 5 mm lead lengths. **53 JavaScript + 10 Python tests passed**. Only tests/docs changed in this follow-up; no installation refresh needed. No physical comparison cut or controller write was performed. See `docs/RDWORKS_COMPARISON.md` for evidence and limits.
 
-RDWorks/score investigation: see `docs/RDWORKS_COMPARISON.md`. Contour-only is now the default, outer-only leads are optional, and rapid optimization chooses nearer closed-contour vertices without changing geometry. Fixed operation changes resetting entered speed/power, intermediate typed power digits reducing linked minimums, and missing explicit air-OFF on layer transitions. Independent decoder verifies synthetic 200 mm/s / 12% minimum+maximum in header and runtime commands; user was unsure of RDWorks minimum. Browser checked that typing the intermediate digit 1 leaves minimum unchanged until committing 12, and switching to Score preserves 200/12. Authorized read-only FTP retrieved new entries KEYCHAIN.RD and UNNAMEDS.RD. **KEYCHAIN.RD actually contains 200 mm/s, ~1% minimum, ~12% maximum**. This confirms the hidden low minimum; the working RDWorks filename is still requested to establish the exact comparison. UNNAMEDS.RD is 30 mm/s at ~50–55%, not the reported 200/12 job. Controller copies/hashes are recorded in the comparison report. No machine writes or motion were sent; do not claim physical equivalence until tested by the operator.
+RDWorks/score investigation: see `docs/RDWORKS_COMPARISON.md`. Contour-only is now the default, outer-only leads are optional, and rapid optimization chooses nearer closed-contour vertices without changing geometry. Fixed operation changes resetting entered speed/power, intermediate typed power digits reducing linked minimums, and missing explicit air-OFF on layer transitions. Independent decoder verifies synthetic 200 mm/s / 12% minimum+maximum in header and runtime commands; user was unsure of RDWorks minimum. Browser checked that typing the intermediate digit 1 leaves minimum unchanged until committing 12, and switching to Score preserves 200/12. Authorized read-only FTP retrieved new entries KEYCHAIN.RD and UNNAMEDS.RD. **KEYCHAIN.RD actually contains 200 mm/s, ~1% minimum, ~12% maximum**. This confirms the hidden low minimum. The exact working RDWorks 200/12 file was unavailable; the PRL reference follow-up below records the user's clarification. UNNAMEDS.RD is 30 mm/s at ~50–55%, not the reported 200/12 job. Controller copies/hashes are recorded in the comparison report. No machine writes or motion were sent; do not claim physical equivalence until tested by the operator.
 
 Reference follow-up: the user said the exact RDWorks job is missing and supplied **PRL.RD** instead. It was retrieved read-only and has 100 mm/s at ~20% min/max, then 15 mm/s at ~70% min/max. Synthetic Corelith header/runtime parameter comparison agrees within encoding quantization. PRL does not establish the missing job's exact minimum. Raw copies and comparison JSON are preserved; no more filename question is pending. Final verification: **51 JavaScript + 10 Python tests passed**, build passed, browser checks passed. The desktop release was refreshed with these repairs; existing controller jobs remain unchanged and must be regenerated/resubmitted explicitly after parameter review.
 
@@ -34,7 +44,7 @@ Remaining priorities: richer unified layer editing, calibrated material library/
 
 ## How to resume
 
-Read this file, `README.md`, `docs/APP_AUDIT.md`, and `docs/RUIDA_PROTOCOL_SPECIFICATION.md`, then inspect the current source and working changes before implementing anything. This file records the agreed ideas; implementation was deferred by the user. Confirm the scope from the new session's request and work through the priorities below.
+Read this file, `README.md`, `docs/APP_AUDIT.md`, `docs/IMAGE_PDF_IMPORT.md`, and `docs/RUIDA_PROTOCOL_SPECIFICATION.md`, then inspect the current source and working changes before implementing anything. Several original roadmap items have now been implemented; the current handoff and dated progress entries take precedence over the original proposals below. Follow the user's next request and preserve the working upload and geometry behaviour.
 
 Suggested prompt:
 
@@ -45,6 +55,7 @@ Suggested prompt:
 - Each layer has independent Cut / Engrave / Score / Ignore operation, speed, minimum/maximum power, passes and air assist under **Laser → Layers**.
 - Generated jobs use **Engrave → Score → Cut** ordering. **Inside-to-Outside**, enabled by default, places nested closed cut contours before containing outlines, even when rapid optimisation is disabled.
 - Engraving currently uses vector hatching; native photo/raster engraving is not implemented.
+- Image/PDF imports offer a preview before committing. Preserve holes, transparent gaps, physical aspect ratio, selected PDF page, explicit sizing, operation mapping and undo. Reimporting is required to change tracing settings after acceptance.
 - The Laser panel now has **Estimated job time**, with operation/layer breakdowns, passes, leads and laser-off travel. A saved 0–300% planning allowance adjusts only the estimate, never machine settings, RD bytes or simulation timing.
 - Time is theoretical: path length / speed, without acceleration, cornering or controller delays. Travel assumes the configured preview start point. Measured jobs are needed to calibrate the allowance.
 - RD export blocks unsupported production features instead of silently dropping them. Preserve this behaviour while extending support.
