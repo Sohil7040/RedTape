@@ -4,13 +4,29 @@ Created: 24 October 2026. Last updated: 26 October 2026.
 
 ## Current handoff
 
-- Latest verified implementation: **60 JavaScript + 10 Python tests passed**; production build passed. Counts in the historical progress entries below refer to earlier checkpoints.
-- Installed desktop release: `2026-10-26T09-26-44-613Z`, serving on `http://127.0.0.1:5188`. Source remains in this folder; old releases are preserved.
+Read [current status and documentation index](docs/CURRENT_STATUS.md) first.
+
+- Latest verified implementation: **99 JavaScript + 10 Python tests passed**; production build passed. Counts in the historical progress entries below refer to earlier checkpoints.
+- Installed desktop release: `2026-10-26T12-36-19-596Z`, serving on `http://127.0.0.1:5188`. Source remains in this folder; old releases are preserved.
+- Startup is intentionally blank (one sheet, no objects). Do not restore the demo or previous drawing automatically. **File → Restore last autosave** is the explicit recovery action; an untouched startup canvas does not overwrite it.
+- Knife accepts click–click/drag; circular previews use actual geometry and Apply keeps source selection. Read [the fixes and native upload audit](docs/KNIFE_PATTERN_UPLOAD_FIXES.md).
 - Image/PDF import is implemented as monochrome tracing into editable outlines or vector engraving spans. Read [the import guide](docs/IMAGE_PDF_IMPORT.md) for usage and limits; native/lossless PDF vector extraction and grayscale/dither raster output remain future scope.
 - Automatic cutter LCD refresh remains unresolved. Current guidance is **Esc → File → select uploaded filename**. Do not claim the panel refresh is fixed or send undocumented selection/start commands.
-- Documentation-only follow-up reconciled README, app audit, protocol notes and this handoff; no runtime changes, new test run, installation or cutter access were needed for that documentation update.
+- Corel drawing priorities implemented: visible property bar, Knife, shared-assembly rectangular/circular patterns, simpler snapping/effect controls. Selected native Corel/RDWorks curve arithmetic is integrated, with finer machining curves, curved DXF imports and native short relative burn moves. Read `docs/RDWORKS_REVERSE_ENGINEERING.md` for evidence, metrics and limitations. No cutter access occurred.
 
 ## Progress — 26 October 2026
+
+Circle sizing: NumField no longer commits untouched rounded values on blur (which could unexpectedly resize geometry). Explicit Make circle for a selected ellipse uses its current width, preserves centre/style/identity and locks proportions. Lock help distinguishes independent dimensions from proportional resizing. Browser verified unchanged-field focus creates no undo edit, 25 × 25 mm circle sizing, and undo restoration of the original two-object Audit Workflow. **99 JavaScript + 10 Python tests and build pass**. Installed release `2026-10-26T12-36-19-596Z`, served bundle `index-shWk_QUb.js`; idle local server restarted, readiness verified. No cutter access. Screenshot `docs/circle-sizing-fixed.png`.
+
+Clean startup: every launch/reload now opens one empty sheet, no artwork or selection. Previous autosave is preserved until document changes and can be opened explicitly with File → Restore last autosave. Showcase remains an explicit File action. Browser verified recovery of Audit Workflow and subsequent blank reload. **97 JavaScript + 10 Python tests and build pass**; installed desktop release `2026-10-26T12-25-11-263Z`, readiness and served bundle verified. Screenshot: `docs/clean-startup.png`. No cutter access.
+
+Knife/circular-pattern follow-up: click–click and short drag Knife repaired; real cubic crossing refinement; explicit cut feedback. Circular arrays now use actual geometry preview, correct custom-radius full-circle spacing, fresh-source pivot initialization and stable source selection after Apply. Source appearance is preserved. Browser verified both Knife gestures, pattern preview/Apply and undo restoration. **96 JavaScript + 10 Python tests and build pass**. Static REA upload audit confirms existing framing/cipher/checksum/ACK fundamentals; transport left unchanged. No cutter access. Read [fix report](docs/KNIFE_PATTERN_UPLOAD_FIXES.md).
+
+UI/UX redesign implemented in the existing application. Three top-level workspaces: Design, Laser, Preview & Send. Compact header/rail, searchable Objects/Sheets, contextual inspector, light/dark themes, local-save states, command palette, fit-selection/all, aspect lock, grouped exports, expandable layer settings, focused optimization sections, calculated nesting preview, clear job-check severity and explicit connection/upload review. Existing geometry, project schema, RD encoding, protocol and bridge preserved. Top-bar Upload opens review; a verified non-motion handshake is required before the existing storage upload action. Transfer results distinguish verified bytes, unavailable readback and mismatch. Original two-object Audit Workflow restored after temporary browser edits. **90 JavaScript + 10 Python tests and build passed**; installed release `2026-10-26T11-46-04-978Z` serves the exact tested bundle, launcher readiness passed. Browser screenshots cover light/dark, operations, preview, exports and compact layouts. No cutter connection check, upload or motion was performed. Read [audit](docs/ui-redesign-audit.md) and [implementation report/file list](docs/ui-redesign-report.md). Backup: `backups/corelith-before-ui-redesign-2026-10-26.tar.gz`. Built-in preset editing, Assets, sheet duplication and grouping remain unavailable; do not claim otherwise.
+
+
+Corel drawing/curve-quality follow-up: installed and used the REA skill for static native analysis. Ported the observed Corel cubic evaluator and RDWorks ellipse controls, without claiming original source recovery. Replaced coarse machining flattening and short-edge deletion; preserved DXF arcs/bulges; added quantization-safe relative burn commands. A 25 mm circle improved from 0.063060 mm to 0.003894 mm maximum radial deviation, versus native RDWorks 0.005113 mm. This is geometric evidence, not a physical cut comparison. Repaired snapping, Knife corner hits and multi-object pattern assemblies; exposed previously hidden tool controls and simplified panels. **78 JavaScript + 10 Python tests and build pass**. Browser verified both patterns and a real Knife split; undo restored original Audit Workflow artwork. Source backup: `backups/corelith-source-before-rea-2026-10-26.tar.gz`. See the [evidence and drawing guide](docs/RDWORKS_REVERSE_ENGINEERING.md).
+
 
 Image/PDF import: File and Laser import controls now accept PNG/JPEG/WebP/BMP/GIF and PDF. New local preview offers PDF page selection, physical width with locked aspect ratio, threshold, inversion, outline-to-Cut and vector-line filled engraving-to-Engrave. Preserves islands/holes, transparent gaps and laser-off travel; imports are editable vectors with undo. PDF.js and its worker/fonts/CMaps/WASM are bundled for offline desktop use; desktop `.mjs` MIME handling repaired. PDF is rendered then monochrome traced (1024 px maximum side), **not lossless vector PDF extraction or grayscale/dither raster engraving**. See README for size/detail limits. Browser checked PNG outline/engraving, second PDF page, layer modes/export readiness, and undo restoration of the original Audit Workflow drawing. Regression coverage: **60 JavaScript + 10 Python tests passed**, production build passed. Screenshot: `docs/pdf-image-import.png`. No controller commands or uploads were sent.
 
@@ -44,7 +60,7 @@ Remaining priorities: richer unified layer editing, calibrated material library/
 
 ## How to resume
 
-Read this file, `README.md`, `docs/APP_AUDIT.md`, `docs/IMAGE_PDF_IMPORT.md`, and `docs/RUIDA_PROTOCOL_SPECIFICATION.md`, then inspect the current source and working changes before implementing anything. Several original roadmap items have now been implemented; the current handoff and dated progress entries take precedence over the original proposals below. Follow the user's next request and preserve the working upload and geometry behaviour.
+Read this file, `README.md`, `docs/ui-redesign-audit.md`, `docs/ui-redesign-report.md`, `docs/RDWORKS_REVERSE_ENGINEERING.md`, `docs/APP_AUDIT.md`, `docs/IMAGE_PDF_IMPORT.md`, and `docs/RUIDA_PROTOCOL_SPECIFICATION.md`, then inspect the current source and working changes before implementing anything. Several original roadmap items have now been implemented; the current handoff and dated progress entries take precedence over the original proposals below. Follow the user's next request and preserve the working upload and geometry behaviour.
 
 Suggested prompt:
 
@@ -52,7 +68,7 @@ Suggested prompt:
 
 ## Working behaviour to preserve
 
-- Each layer has independent Cut / Engrave / Score / Ignore operation, speed, minimum/maximum power, passes and air assist under **Laser → Layers**.
+- Each layer has independent Cut / Engrave / Score / Ignore operation, speed, minimum/maximum power, passes and air assist under **Laser → Operations**.
 - Generated jobs use **Engrave → Score → Cut** ordering. **Inside-to-Outside**, enabled by default, places nested closed cut contours before containing outlines, even when rapid optimisation is disabled.
 - Engraving currently uses vector hatching; native photo/raster engraving is not implemented.
 - Image/PDF imports offer a preview before committing. Preserve holes, transparent gaps, physical aspect ratio, selected PDF page, explicit sizing, operation mapping and undo. Reimporting is required to change tracing settings after acceptance.

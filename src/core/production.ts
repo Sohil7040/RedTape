@@ -2,7 +2,7 @@
    Converts visible document geometry to ordered toolpaths with kerf
    compensation, lead-ins, engrave hatching and machine time estimates. */
 import {
-  Bounds, Pt, clone, dist, flattenSubpath, polygonArea, polylineLength, simplifyPolyline,
+  Bounds, Pt, clone, dist, polygonArea, polylineLength,
   unionBounds,
 } from './geometry'
 import {
@@ -10,6 +10,7 @@ import {
   layerOperation, shapeBounds, textBoxFor,
 } from './model'
 import { generateHatchWasm, optimizeTourWasm, isWasmActive } from '../wasm/wasmEngine'
+import { flattenMachiningSubpath } from './machiningCurves'
 
 export interface Toolpath {
   id: string
@@ -112,14 +113,18 @@ export function buildProductionJob(doc: DocumentModel): ProductionJob {
       objectCount++
       for (let si = 0; si < shape.subpaths.length; si++) {
         const sub = shape.subpaths[si]
-        let pts = flattenSubpath(sub, 0.1)
+        let pts: Pt[]
+        try { pts = flattenMachiningSubpath(sub) }
+        catch(error) { errors.push(`${shape.name}: ${error instanceof Error ? error.message : 'Could not prepare machining curve'}`); continue }
         if (pts.length < 2) continue
-        // drop duplicated closure for closed contours
-        if (sub.closed && pts.length > 2 && dist(pts[0], pts[pts.length - 1]) < 0.01) pts.pop()
+        // The machining flattener already removes the duplicated closure.
+        // A nearby distinct vertex can be an intentional small feature.
         if (sub.closed && prod.kerf > 0 && prod.kerfMode !== 'center' && (op.mode === 'cut' || op.mode === 'score')) {
           pts = offsetClosedPolyline(pts, (prod.kerfMode === 'outside' ? 1 : -1) * prod.kerf / 2)
         }
-        pts = simplifyPolyline(pts, 0.03)
+        // Preserve all retained curve vertices and intentional small features.
+        // The old distance-only 0.03 mm filter changed geometry without a
+        // deviation bound and could remove the very points needed for curves.
 
         // Dot mode: generate stipple points
         if (op.mode === 'dot') {

@@ -12,6 +12,7 @@ import { ColorField, EmptyHint, Kbd, NumField, Section, Segmented, SelectField, 
 interface Props { state: EditorState; store: EditorStore }
 
 export default function DesignPanel({ state, store }: Props) {
+  const [aspectLocked,setAspectLocked] = useState(false)
   const [alignToPage, setAlignToPage] = useState(false)
   const shapes = store.getSelectedShapes()
   const alignWithPage = alignToPage || shapes.length === 1
@@ -77,13 +78,21 @@ export default function DesignPanel({ state, store }: Props) {
         <div className="num-grid">
           <NumField label="X" value={b.x} onChange={v => store.setSelectionPosition(v, b.y)} precision={1} suffix="mm" />
           <NumField label="Y" value={b.y} onChange={v => store.setSelectionPosition(b.x, v)} precision={1} suffix="mm" />
-          <NumField label="W" value={b.w} onChange={v => store.setSelectionSize(v, b.h)} min={0.1} precision={1} suffix="mm" />
-          <NumField label="H" value={b.h} onChange={v => store.setSelectionSize(b.w, v)} min={0.1} precision={1} suffix="mm" />
+          <NumField label="W" value={b.w} onChange={v => store.setSelectionSize(v, aspectLocked && b.w>0 ? b.h*v/b.w : b.h)} min={0.1} precision={1} suffix="mm" />
+          <NumField label="H" value={b.h} onChange={v => store.setSelectionSize(aspectLocked && b.h>0 ? b.w*v/b.h : b.w, v)} min={0.1} precision={1} suffix="mm" />
         </div>
-        <div className="readout-row">
+        <Switch label="Lock aspect ratio" checked={aspectLocked} onChange={setAspectLocked} />
+        <p className="transform-hint">{aspectLocked ? 'Width and height are linked. Unlock to change their proportions.' : 'Width and height are independent.'}</p>
+        {shapes.length === 1 && primary.kind === 'ellipse' && <>
+          <button className="wide-ghost" onClick={() => { store.makeSelectionCircle(); setAspectLocked(true) }}>Make circle (W = H)</button>
+          <p className="transform-hint">Uses the current width as diameter, keeps the centre, and locks proportions.</p>
+        </>}
+
+        <details className="precision-details"><summary>Centre and centroid</summary><div className="readout-row">
           <span className="readout"><i className="crosshair-dot" />Center <strong>{center.x.toFixed(1)}, {center.y.toFixed(1)}</strong></span>
           <span className="readout"><i className="centroid-dot" />Centroid <strong>{centroid.x.toFixed(1)}, {centroid.y.toFixed(1)}</strong></span>
         </div>
+        </details>
         <div className="object-actions">
           <button onClick={() => store.duplicateSelection()}><Copy size={13} />Duplicate <Kbd>⌘D</Kbd></button>
           <button onClick={() => store.deleteSelection()} className="danger"><Trash2 size={13} />Delete</button>
@@ -139,7 +148,7 @@ export default function DesignPanel({ state, store }: Props) {
       </Section>
 
       {/* Boolean Operations (Union, Subtract, Intersect, Exclude) */}
-      <Section title="Boolean Operations" action={<span className="section-hint">COMBINE</span>}>
+      <Section title="Boolean Operations" defaultOpen={false} action={<span className="section-hint">COMBINE</span>}>
         <div className="boolean-buttons-grid">
           <button
             type="button"
@@ -271,7 +280,7 @@ export default function DesignPanel({ state, store }: Props) {
         )}
       </Section>
 
-      <Section title="Outline" action={<Switch checked={stroke.enabled} onChange={v => store.setStroke({ enabled: v }, true)} />}>
+      <Section title="Outline" defaultOpen={false} action={<Switch checked={stroke.enabled} onChange={v => store.setStroke({ enabled: v }, true)} />}>
         <div className="field-row">
           <span>Color</span>
           <ColorField value={stroke.color} onChange={v => store.setStroke({ color: v }, true)} />
@@ -311,11 +320,11 @@ export default function DesignPanel({ state, store }: Props) {
           <textarea className="text-editor" aria-label="Text content" placeholder="Type your text" value={t.content} rows={3} onChange={e => store.setSelectedText(e.target.value)} />
           <div className="num-grid two">
             <NumField label="Size" value={t.fontSize} onChange={v => store.setTextProps({ fontSize: Math.max(1, v) })} precision={1} suffix="mm" />
-            <NumField label="Weight" value={t.fontWeight} onChange={v => store.setTextProps({ fontWeight: Math.min(900, Math.max(100, Math.round(v / 100) * 100)) })} min={100} max={900} step={100} precision={0} />
+            <SelectField ariaLabel="Font weight" value={t.fontWeight>=600?'700':'400'} onChange={v=>store.setTextProps({fontWeight:Number(v)})} options={[{value:'400',label:'Regular'},{value:'700',label:'Bold'}]}/>
           </div>
           <div className="field-row">
             <span>Family</span>
-            <SelectField value={t.fontFamily} onChange={v => store.setTextProps({ fontFamily: v })} options={[{ value: 'Arial', label: 'Arial' }, { value: 'Arial Black', label: 'Arial Black' }, { value: 'Georgia', label: 'Georgia' }, { value: 'Courier New', label: 'Courier New' }, { value: 'Times New Roman', label: 'Times' }]} />
+            <SelectField value={t.fontFamily} onChange={v => store.setTextProps({ fontFamily: v })} options={[{ value: 'Arial', label: 'Sans (bundled)' }, { value: 'Arial Black', label: 'Sans alternate (bundled)' }, { value: 'Georgia', label: 'Serif (bundled)' }, { value: 'Courier New', label: 'Mono (bundled)' }, { value: 'Times New Roman', label: 'Serif alternative (bundled)' }]} />
           </div>
           <div className="field-row">
             <span>Letter spacing</span>
@@ -361,6 +370,7 @@ export default function DesignPanel({ state, store }: Props) {
         </Section>
       )}
 
+      <details className="advanced-design"><summary>Effects and clipping</summary>
       {(shapes.length > 1 || primary.clip || hasClipChildren) && (
         <Section title="PowerClip" action={<span className="section-hint">LIVE CLIP</span>}>
           <div className="powerclip-card">
@@ -388,6 +398,7 @@ export default function DesignPanel({ state, store }: Props) {
           <span className="range-value">{Math.round(primary.shadow.opacity * 100)}%</span>
         </div>
       </Section>
+      </details>
       <div className="inspector-foot"><span>ID {primary.id.slice(-8)}</span><span>Z {state.doc.layers.findIndex(l => l.shapes.some(s => s.id === primary.id)) + 1}</span></div>
     </div>
   )
@@ -411,7 +422,7 @@ function ArtboardPanel({ state, store }: { state: EditorState; store: EditorStor
     <div className="inspector-stack">
       <div className="selection-hero artboard">
         <div className="selection-hero-top"><span className="shape-kind-badge"><Grid2X2 size={13} />ARTBOARD</span><span className="node-pill">ACTIVE</span></div>
-        <h2 className="artboard-name">Page 01 <span>/ {page.name}</span></h2>
+        <h2 className="artboard-name">{page.name}</h2>
         <div className="selection-hero-meta"><span>{page.width} × {page.height} mm</span><span>Top-left origin</span><span>RGB</span></div>
       </div>
       <Section title="Page setup" action={<span className="section-hint">WORLD</span>}>
@@ -433,7 +444,7 @@ function ArtboardPanel({ state, store }: { state: EditorState; store: EditorStor
           <ColorField value={page.color} onChange={v => store.setPage({ color: v })} />
         </div>
       </Section>
-      <Section title="Grid & units" action={<Switch checked={state.doc.grid.enabled} onChange={v => store.setGrid({ enabled: v })} />}>
+      <Section defaultOpen={false} title="Grid & units" action={<Switch checked={state.doc.grid.enabled} onChange={v => store.setGrid({ enabled: v })} />}>
         <div className="num-grid two">
           <NumField label="Spacing" value={state.doc.grid.size} onChange={v => store.setGrid({ size: Math.max(0.5, v) })} min={0.5} suffix="mm" />
           <NumField label="Subdiv" value={state.doc.grid.subdivisions} onChange={v => store.setGrid({ subdivisions: Math.max(1, Math.round(v)) })} min={1} precision={0} />
@@ -441,7 +452,7 @@ function ArtboardPanel({ state, store }: { state: EditorState; store: EditorStor
         <div className="field-row"><span>Units</span><span className="static-value">Millimetres (mm)</span></div>
         <div className="field-row"><span>Snap radius</span><span className="static-value">{state.doc.snap.radius} px screen</span></div>
       </Section>
-      <Section title="Quick start">
+      <Section title="Quick start" defaultOpen={false}>
         <div className="shortcut-list">
           <div><span>Select artwork</span><Kbd>V</Kbd></div>
           <div><span>Edit nodes</span><Kbd>F10</Kbd></div>

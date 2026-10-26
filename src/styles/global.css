@@ -65,7 +65,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 1px
 .app-shell {
   height: 100dvh;
   display: grid;
-  grid-template-rows: 56px minmax(0, 1fr) 26px;
+  grid-template-rows: 56px 52px minmax(0, 1fr) 26px;
   overflow: hidden;
   background: var(--bg);
 }
@@ -381,6 +381,12 @@ button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 1px
   white-space: nowrap;
   animation: barIn .25s ease-out;
 }
+.property-bar { min-width:0; overflow-x:auto; overflow-y:hidden; background:var(--panel); border-bottom:1px solid var(--border); }
+.property-bar .tool-options { position:static; transform:none; max-width:none; width:max-content; min-width:100%; min-height:51px; border:0; border-radius:0; box-shadow:none; backdrop-filter:none; animation:none; padding:5px 14px; }
+.property-bar .to-label { font-size:8px; }
+.property-bar .to-value,.property-bar .to-buttons button { font-size:10px; }
+.pattern-math>summary,.advanced-design>summary { padding:11px 0; color:var(--text-soft); cursor:pointer; font-size:11px; font-weight:600; }
+.advanced-design { border-top:1px solid var(--border); }
 @keyframes barIn { from { opacity: 0; transform: translate(-50%, -5px); } }
 .to-tool-id { display: flex; align-items: center; gap: 8px; flex: none; }
 .to-icon { width: 30px; height: 30px; border-radius: 6px; display: grid; place-items: center; color: var(--accent); background: rgba(13, 148, 136, .1); border: 1px solid rgba(13, 148, 136, .2); }
@@ -773,6 +779,12 @@ button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 1px
 .about-foot svg { color: var(--accent); }
 
 /* Snap Panel / Patterns */
+.toggle-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+.toggle-grid .toggle-tile { width: 100%; min-width: 0; }
+.screen-tip-legend { display: flex; flex-wrap: wrap; gap: 6px 10px; margin-top: 12px; font-size: 9px; color: var(--muted); }
+.screen-tip-legend .eyebrow { flex-basis: 100%; }
+.screen-tip-legend > span:not(.eyebrow) { display: inline-flex; align-items: center; gap: 4px; }
+.screen-tip-legend i { width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
 .snap-master { display: flex; align-items: center; gap: 10px; padding: 14px; border-bottom: 1px solid var(--border); background: #ffffff; }
 .snap-master.on .snap-master-icon { color: var(--accent); border-color: rgba(13,148,136,.3); background: rgba(13,148,136,.06); }
 .snap-master-icon { width: 37px; height: 37px; border-radius: 50%; display: grid; place-items: center; border: 1px solid var(--border); color: var(--muted); flex: none; }

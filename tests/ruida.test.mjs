@@ -109,6 +109,7 @@ test('commands match lengths observed in working controller files', () => {
     lengths.set(cmd.slice(0, 2).join(','), cmd.length)
   }
   for (const cmd of commands(c.buildJobRD(square()))) {
+    if (cmd[0] === 0xa9) { assert.ok(cmd.length === 5 || cmd.length === 6 && cmd[5] === 0); continue }
     if ([0x88, 0xa8].includes(cmd[0])) { assert.ok([11, 12].includes(cmd.length)); continue }
     if (cmd[0] === 0xe7 && cmd[1] === 1) continue
     const expected = lengths.get(cmd.slice(0, 2).join(','))
@@ -143,8 +144,29 @@ test('laser 1 settings, second laser off, exact speeds, passes and lead geometry
   assert.ok(cmds.filter(x=>x[0]===0xc6&&[0x21,0x22].includes(x[1])).every(x=>number(x.slice(2))===0))
   assert.equal(cmds.filter(x=>x[0]===0x88).length,3)
   assert.equal(cmds.filter(x=>x[0]===0xe7&&x[1]===0).length,1)
-  const cut = cmds.filter(x=>x[0]===0xa8)
+  const cut = cmds.filter(x=>[0xa8,0xa9].includes(x[0]))
   assert.ok(cut.length >= 8)
+})
+test('relative Ruida coordinates cover the signed range and preserve exact rounded positions', () => {
+  for (const delta of [-8192,-8191,-1,0,1,8191]) {
+    const n=number(c.encodeRuidaDelta2(delta))
+    assert.equal(n>8191?n-16384:n,delta)
+  }
+  for(const delta of [-8193,8192,NaN,1.5])assert.throws(()=>c.encodeRuidaDelta2(delta))
+  for(const origin of ['top-left','top-right','bottom-left','bottom-right']) {
+    const doc=square(), pts=Array.from({length:500},(_,i)=>({x:30+i*.01337,y:40+i*.00777}))
+    doc.layers[0].shapes=[c.makeShape('path',[{id:'fine',closed:false,nodes:pts.map(p=>c.makeNode(p.x,p.y))}])]
+    doc.production.originCorner=origin
+    const bytes=c.buildJobRD(doc), motion=motionSegments(bytes)
+    assert.ok(commands(bytes).some(cmd=>cmd[0]===0xa9))
+    const map=p=>[Math.round((origin.endsWith('right')?pts.at(-1).x-p.x:p.x-pts[0].x)*1000),
+      Math.round((origin.startsWith('bottom')?pts.at(-1).y-p.y:p.y-pts[0].y)*1000)]
+    assert.deepEqual(motion.burn.at(-1)[1],map(pts.at(-1)))
+    // The full sequence is checked after production filtering; no drift may
+    // occur regardless of how many short vectors were retained.
+    const path=c.getProductionJob(doc).paths[0]
+    assert.deepEqual(motion.burn.map(segment=>segment[1]),c.toolpathPoints(path).slice(1).map(map))
+  }
 })
 test('reject invalid geometry/settings instead of clamping silently', () => {
   assert.throws(()=>c.buildJobRD(c.createBlankDocument()),/No machinable/)

@@ -1,3 +1,7 @@
+import { UI_OPERATION_COLORS as OPERATION_COLORS } from '../../core/workspace'
+import JobChecks from '../JobChecks'
+import { transferOutcome, transferProgress } from '../../core/transferPresentation'
+import NestingPreview from '../NestingPreview'
 import {
   AlertTriangle, ArrowDownToLine, CheckCircle2, Download, FastForward, FileCode2, Flame,
   Gauge, Layers3, Move, Pause, PenLine, Play, RotateCcw, RotateCw, Scissors, Sparkles,
@@ -6,7 +10,7 @@ import {
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { EditorState, EditorStore } from '../../core/store'
 import {
-  OPERATION_COLORS, OPERATION_LABELS, OriginCorner, ProductionMode, RDWORKS_PALETTE,
+  OPERATION_LABELS, OriginCorner, ProductionMode, RDWORKS_PALETTE,
   layerOperation, MATERIAL_PRESETS,
 } from '../../core/model'
 import { estimateJobTime, formatDuration, getProductionJob, getSimulationStateAt } from '../../core/production'
@@ -32,7 +36,9 @@ export default function ProductionPanel({ state, store }: Props) {
   const job = getProductionJob(state.doc)
   const timeEstimate = estimateJobTime(job, prod.timeAllowancePct ?? 0)
   const [sequenceLimit, setSequenceLimit] = useState(100)
-  const [activeTab, setActiveTab] = useState<'machine' | 'layers' | 'sim' | 'output'>('machine')
+  const activeTab = state.productionTab
+  const setActiveTab = (tab: typeof activeTab) => store.setProductionTab(tab)
+  const [expandedOps,setExpandedOps] = useState<Record<string,boolean>>({})
   const [wifiIP, setWifiIP] = useState(() => loadMachineProfile().ip)
   const [wifiPort, setWifiPort] = useState(() => loadMachineProfile().port)
   const [wifiOnline, setWifiOnline] = useState<boolean | null>(null)
@@ -40,6 +46,7 @@ export default function ProductionPanel({ state, store }: Props) {
   const [wifiChecking, setWifiChecking] = useState(false)
   const [wifiSending, setWifiSending] = useState(false)
   const [uploadFilename, setUploadFilename] = useState(() => { try { return ruidaFilename(state.doc.name || 'JOB') + '.RD' } catch { return 'JOB.RD' } })
+  const [uploadTone,setUploadTone] = useState<'success'|'warning'|'error'>('warning')
   const [uploadResult, setUploadResult] = useState<string | null>(null)
 
   const [writesEnabled, setWritesEnabled] = useState(false)
@@ -73,20 +80,17 @@ export default function ProductionPanel({ state, store }: Props) {
         const transfer = await bridgeJSON(`/api/ruida/transfers/${encodeURIComponent(transferId)}`)
         if (disposed) return
         failures = 0
-        setUploadPercent(Math.min(100, Math.round(transfer.bytesSent / transfer.totalBytes * 100)))
+        setUploadPercent(transferProgress(transfer.bytesSent,transfer.totalBytes))
         if (transfer.state === 'uploading') { timer = setTimeout(poll, 500); return }
-        if (transfer.success) {
-          setUploadResult(`✓ ${transfer.filename}${transfer.fileIndex ? ` · file ${transfer.fileIndex}` : ''} ${transfer.verification === 'matched' ? 'stored and readback verified' : 'acknowledged'} on ${transfer.ip}:${transfer.port} (UDP). Job not started. On the cutter: Esc → File → select ${transfer.filename}. Reopen File if the list is stale.${transfer.warning ? ` ${transfer.warning}` : ''}`)
-          store.toast(transfer.verification === 'matched' ? `Verified ${transfer.filename}. Cutter: Esc → File → select this file.` : `Download acknowledged; ${transfer.warning ?? 'reopen File on the cutter and check the stored job'}`, transfer.verification === 'matched' ? 'success' : 'warn', 8000)
-          setWifiOnline(true)
-        } else {
-          setUploadResult(`Error: ${transfer.error}. Check the cutter before retrying; no automatic retry was sent.`)
-          store.toast('Upload failed. Check transfer details before retrying.', 'warn', 6000)
-        }
+        const outcome=transferOutcome(transfer)
+        setUploadTone(outcome.tone);setUploadResult(`${outcome.title}. ${outcome.message}`)
+        store.toast(outcome.title,outcome.tone==='success'?'success':'warn',8000)
+        if(transfer.success)setWifiOnline(true)
+
       } catch (err: any) {
         if (disposed) return
         failures++
-        setUploadResult(`Error: ${err.message}. Transfer outcome is uncertain. Status checks never resend file data.`)
+        setUploadTone('error');setUploadResult(`Error: ${err.message}. Transfer outcome is uncertain. Status checks never resend file data.`)
         if (failures < 3) { timer = setTimeout(poll, 1000 * failures); return }
         setWifiSending(false); setTransferUncertain(true); return
       }
@@ -119,7 +123,7 @@ export default function ProductionPanel({ state, store }: Props) {
 
   const sendJobOverWifi = async () => {
     if (sendLock.current || wifiSending || transferId) return
-    if (!writesEnabled || !profileValid || !prepared.bytes) return
+    if (wifiOnline !== true || !writesEnabled || !profileValid || !prepared.bytes) return
     sendLock.current = true; setWifiSending(true); setUploadPercent(0); setUploadResult(null)
     const requestId = crypto.randomUUID()
     try { sessionStorage.setItem(TRANSFER_KEY, requestId) } catch { /* optional persistence */ }
@@ -133,7 +137,7 @@ export default function ProductionPanel({ state, store }: Props) {
       setTransferId(result.transferId)
     } catch (err: any) {
       setTransferId(requestId)
-      setUploadResult(`Error: ${err.message}. No automatic retry. If the request reached the bridge, check controller storage first.`)
+      setUploadTone('error');setUploadResult(`Error: ${err.message}. No automatic retry. If the request reached the bridge, check controller storage first.`)
       store.toast('Upload could not be confirmed. See transfer details.', 'warn', 6500)
     }
   }
@@ -189,46 +193,11 @@ export default function ProductionPanel({ state, store }: Props) {
 
   return (
     <div className="inspector-stack production-panel">
-      <nav className="laser-workflow" aria-label="Laser workflow">
-        <button type="button" onClick={() => { store.setTool('select'); store.setProductionPreview(false); store.setRightTab('design') }}>1 Design</button>
-        <button type="button" aria-current={activeTab === 'layers' ? 'step' : undefined} onClick={() => setActiveTab('layers')}>2 Prepare</button>
-        <button type="button" aria-current={activeTab === 'sim' ? 'step' : undefined} onClick={() => { setActiveTab('sim'); store.setProductionPreview(true) }}>3 Preview</button>
-        <button type="button" aria-current={activeTab === 'machine' ? 'step' : undefined} onClick={() => setActiveTab('machine')}>4 Send</button>
-        <span role="status">{prepared.error ? 'Needs attention' : 'Export ready'} · {timeEstimate.available ? formatDuration(timeEstimate.estimatedSeconds) : 'Time unavailable'}</span>
+      <nav className="prod-subnav" aria-label={state.workflow==='laser'?'Laser preparation sections':'Preview and send sections'}>
+        {(state.workflow==='laser'?[{id:'layers' as const,label:'Operations'},{id:'settings' as const,label:'Optimization'}]:[{id:'sim' as const,label:'Summary'},{id:'machine' as const,label:'Connection'},{id:'output' as const,label:'Export'}]).map(t=><button key={t.id} className={activeTab===t.id?'active':''} aria-pressed={activeTab===t.id} onClick={()=>setActiveTab(t.id)}>{t.label}</button>)}
       </nav>
-      {/* RDWorks / Laser Hero Header */}
-      <div className={`prod-hero ${prod.preview ? 'on' : ''}`}>
-        <div className="prod-hero-top">
-          <span className="eyebrow">RUIDA DSP / RDWORKS CAM</span>
-          <span className={`job-state ${prod.preview ? 'live' : ''}`}><i />{prod.preview ? 'PREVIEWING' : 'STANDBY'}</span>
-        </div>
-        <h2>Laser Production</h2>
-        <p>Ruida controller toolpaths, inside-out sequencing, 16-color layer parameters, and live simulation.</p>
-
-        <div className="prod-hero-actions">
-          <button className={`prod-preview-btn ${prod.preview ? 'on' : ''}`} onClick={() => store.setProductionPreview(!prod.preview)}>
-            <Zap size={14} />{prod.preview ? 'Exit preview' : 'Preview toolpaths'}
-          </button>
-          <button className="prod-import-mini" onClick={() => document.getElementById('job-import')?.click()} title="Import SVG, DXF, RLD, RD, PLT, image or PDF">
-            <Upload size={14} />
-          </button>
-        </div>
-
-        <div className="prod-mode-legend">
-          {(['cut', 'engrave', 'score', 'dot', 'pen'] as ProductionMode[]).map(m => (
-            <span key={m}><i style={{ background: OPERATION_COLORS[m] }} />{OPERATION_LABELS[m]}</span>
-          ))}
-        </div>
-      </div>
-
-      {/* Production Telemetrics */}
-      <div className="prod-stat-grid">
-        <div><span>TOOLPATHS</span><strong>{job.paths.length}</strong><em>{job.contourCount} contours</em></div>
-        <div><span>PATH LENGTH</span><strong>{(job.totalLength / 1000).toFixed(2)}<small> m</small></strong><em>{job.hatchCount} hatches</em></div>
-        <div><span>JOB ESTIMATE</span><strong>{timeEstimate.available ? formatDuration(timeEstimate.estimatedSeconds) : "—"}</strong><em>includes travel{timeEstimate.allowancePct ? ` + ${timeEstimate.allowancePct}% allowance` : " · theoretical"}</em></div>
-        <div><span>OBJECTS</span><strong>{job.objectCount}</strong><em>{prepared.error ? 'needs attention' : job.warnings.length ? `${job.warnings.length} warnings` : 'ready'}</em></div>
-      </div>
-
+      <div className="job-overview"><strong>{state.doc.page.name}</strong><span>{job.objectCount} objects · {job.paths.length} paths · {(job.totalLength/1000).toFixed(2)} m</span></div>
+      {state.workflow==='preview' && activeTab==='sim' && (
       <section className="laser-time-card" aria-label="Estimated job time">
         <div className="laser-time-head">
           <div><span className="eyebrow">ESTIMATED JOB TIME</span><strong aria-live="polite">{timeEstimate.available ? formatDuration(timeEstimate.estimatedSeconds) : 'Unavailable'}</strong></div>
@@ -256,27 +225,21 @@ export default function ProductionPanel({ state, store }: Props) {
         <div className="laser-order-note">
           <strong>Engrave → Score → Cut</strong>
           <span>{prod.insideOut ? 'Inner closed cuts before outer cuts.' : 'Inner-first cutting is off.'}</span>
-          <button type="button" className="link-btn" onClick={() => setActiveTab('layers')}>Edit layer speed &amp; power</button>
+          <button type="button" className="link-btn" onClick={() => store.setWorkflow('laser')}>Edit layer speed &amp; power</button>
         </div>
       </section>
 
-      {/* Mode Sub-navigation */}
-      <div className="prod-subnav">
-        <button className={activeTab === 'machine' ? 'active' : ''} onClick={() => setActiveTab('machine')}>Machine</button>
-        <button className={activeTab === 'layers' ? 'active' : ''} onClick={() => setActiveTab('layers')}>Layers ({state.doc.layers.length})</button>
-        <button className={activeTab === 'sim' ? 'active' : ''} onClick={() => setActiveTab('sim')}>Simulate</button>
-        <button className={activeTab === 'output' ? 'active' : ''} onClick={() => setActiveTab('output')}>Export</button>
-      </div>
+      )}
 
       {activeTab === 'machine' && (
         <>
           {/* Wi-Fi Laser Machine & Controller Hardware Link */}
           <Section
-            title="Wi-Fi Laser Machine Link"
+            title="Controller connection"
             action={
               <span className={`wifi-status-badge ${wifiOnline ? 'online' : 'offline'}`}>
                 {wifiOnline ? <Wifi size={12} /> : <WifiOff size={12} />}
-                {wifiOnline === null ? 'UNCHECKED' : wifiOnline ? 'UDP READY' : 'NO ACK'}
+                {wifiChecking ? 'Checking…' : !profileValid ? 'Not configured' : wifiOnline === null ? 'Ready to verify' : wifiOnline ? 'Verified' : 'Failed'}
               </span>
             }
           >
@@ -310,32 +273,20 @@ export default function ProductionPanel({ state, store }: Props) {
                 </button>
               </div>
 
-              <button type="button" className="link-btn" disabled={wifiSending || wifiChecking} onClick={() => { setWifiIP(RUIDA_HARDWARE_LIMITS.defaultDeviceIP); setWifiPort(RUIDA_HARDWARE_LIMITS.ruidaPort) }}>Use verified EVA connection · UDP 50201</button>
+              <button type="button" className="link-btn" disabled={wifiSending || wifiChecking} onClick={() => { setWifiIP(RUIDA_HARDWARE_LIMITS.defaultDeviceIP); setWifiPort(RUIDA_HARDWARE_LIMITS.ruidaPort) }}>Restore saved EVA defaults</button>
 
-              {/* Saved machine profile */}
-              <div className="hardware-audit-box">
-                <div className="audit-header">
-                  <ShieldCheck size={13} className="audit-icon" />
-                  <span>Saved EVA II 43 machine profile</span>
-                </div>
-                <div className="audit-specs-grid">
-                  <div><span>Bed Dimensions:</span><strong>{RUIDA_HARDWARE_LIMITS.bedWidth} × {RUIDA_HARDWARE_LIMITS.bedHeight} mm</strong></div>
-                  <div><span>Machine Origin:</span><strong>Top-Right (Origin 2)</strong></div>
-                  <div><span>Max Rapid Vel:</span><strong>{RUIDA_HARDWARE_LIMITS.maxRapidSpeed} mm/s</strong></div>
-                  <div><span>Export Power Limit:</span><strong>{RUIDA_HARDWARE_LIMITS.maxPowerPct}% cap</strong></div>
-                </div>
-              </div>
-
+              <details className="connection-details"><summary>Profile details</summary><p>Saved EVA II 43 profile · {RUIDA_HARDWARE_LIMITS.bedWidth} × {RUIDA_HARDWARE_LIMITS.bedHeight} mm bed. Job origin is {currentOrigin}.</p><p>Verification checks a non-motion UDP handshake; it does not establish machine or material readiness.</p></details>
               {/* Safe Wi-Fi Machine Storage Transfer (Memory Download Only) */}
-              <div className="wifi-storage-box">
+              <div className="wifi-storage-box" id="upload-review">
                 <div className="storage-header">
                   <HardDrive size={13} className="storage-icon" />
-                  <span>Send File to Laser Storage (Wi-Fi)</span>
+                  <span>Review and upload to storage</span>
                 </div>
                 <div className="storage-desc">
                   {bridgeError ?? (writesEnabled ? 'Storage uploads enabled. Uploading never starts a job; start it from the cutter panel.' : 'Read-only bridge: run npm run laser, or npm run laser:preview after a build, to enable storage uploads.')}
                 </div>
                 <p className="storage-desc">The LCD may keep its current file or an old list after upload. Press Esc, reopen File, then select the uploaded filename to load its preview.</p>
+                <dl className="upload-review"><div><dt>Sheet</dt><dd>{state.doc.page.name}</dd></div><div><dt>Destination</dt><dd>{wifiIP}:{wifiPort} · UDP</dd></div><div><dt>Estimated duration</dt><dd>{timeEstimate.available?formatDuration(timeEstimate.estimatedSeconds):'Unavailable'} (theoretical)</dd></div><div><dt>Validation</dt><dd>{prepared.error?'Blocked':job.warnings.length?`${job.warnings.length} warnings`:'RD preflight passed'}</dd></div></dl>
                 <div className="storage-input-row">
                   <span className="mini-label">FILE NAME</span>
                   <input
@@ -344,23 +295,23 @@ export default function ProductionPanel({ state, store }: Props) {
                     disabled={wifiSending}
                     aria-label="Laser file name"
                     onChange={e => setUploadFilename(e.target.value.toUpperCase())}
-                    placeholder="DEFAULT.RD"
+                    placeholder="JOB.RD"
                   />
                 </div>
                 <button
                   type="button"
                   className="wifi-send-storage-btn"
                   onClick={sendJobOverWifi}
-                  disabled={!writesEnabled || !!transferId || wifiSending || wifiChecking || !profileValid || !prepared.bytes}
+                  disabled={wifiOnline !== true || !writesEnabled || !!transferId || wifiSending || wifiChecking || !profileValid || !prepared.bytes}
                   title="Upload .rd file directly to Ruida internal storage"
                 >
                   <Send size={13} className={wifiSending ? 'spin' : ''} />
-                  <span>{!writesEnabled ? 'Read-only — Upload Disabled' : wifiSending ? (uploadPercent >= 100 ? 'Verifying stored file…' : `Uploading… ${uploadPercent}%`) : 'Send to Laser Storage'}</span>
+                  <span>{!writesEnabled ? 'Read-only — Upload Disabled' : wifiSending ? (uploadPercent >= 100 ? 'Verifying stored file…' : `Uploading… ${uploadPercent}%`) : wifiOnline !== true ? 'Verify connection before upload' : 'Upload to Machine Storage'}</span>
                 </button>
                 <div className="laser-preflight" aria-live="polite">
                   {!profileValid && <p className="job-warning">Enter a valid IPv4 address and UDP port.</p>}
                   {prepared.error ? <p className="job-warning">Export blocked: {prepared.error}</p> : <p>{prepared.filename} · {(prepared.bytes!.length / 1024).toFixed(1)} KB · {job.bounds.w.toFixed(1)} × {job.bounds.h.toFixed(1)} mm · {job.paths.length} paths</p>}
-                  {prepared.error?.includes('minimum laser power') && <button type="button" className="safe-export-btn" onClick={() => setActiveTab('layers')}>Review layer minimum / maximum power</button>}
+                  {prepared.error?.includes('minimum laser power') && <button type="button" className="safe-export-btn" onClick={() => store.setWorkflow('laser')}>Review layer minimum / maximum power</button>}
                   {job.errors.some(e => e.includes('text object')) && <button type="button" className="safe-export-btn" onClick={() => void store.convertTextToCurves('job')}>Convert job text to curves</button>}
                   <small>Job-local placement · origin {currentOrigin}. Check the material settings and position before starting at the cutter.</small>
                   {wifiSending && <progress value={uploadPercent} max={100} aria-label="Upload progress" />}
@@ -371,49 +322,21 @@ export default function ProductionPanel({ state, store }: Props) {
                   <button type="button" className="link-btn" onClick={() => { setTransferId(null); setTransferUncertain(false); sendLock.current = false; try { sessionStorage.removeItem(TRANSFER_KEY) } catch {} }}>I checked the cutter — clear unresolved transfer</button>
                 </div>}
                 {uploadResult && (
-                  <div className={`storage-result-badge ${uploadResult.startsWith('✓') ? 'success' : 'error'}`}>
+                  <div role="status" className={`storage-result-badge ${uploadTone}`}>
                     {uploadResult}
                   </div>
                 )}
               </div>
 
-              {/* Direct Command Safety Lock Notice - strictly no direct writing */}
-              <div className="safety-locked-notice">
-                <ShieldAlert size={14} className="lock-icon" />
-                <div className="lock-text">
-                  <strong>Direct Motion Commands: LOCKED (Safety Mode)</strong>
-                  <span>Direct physical motion commands disabled for machine protection. Controller storage writes require explicit opt-in; offline export is active.</span>
-                </div>
-              </div>
-
-              {/* Safe Export Options */}
-              <div className="safe-export-row">
-                <button
-                  type="button"
-                  className="safe-export-btn primary"
-                  onClick={() => exportFile('rd')}
-                  disabled={!!prepared.error}
-                  title="Export Ruida DSP bytecode (.rd) for U-Disk or RDWorks"
-                >
-                  <Download size={13} />
-                  <span>Export .rd File</span>
-                </button>
-                <button
-                  type="button"
-                  className="safe-export-btn"
-                  onClick={() => exportFile('dxf')}
-                  disabled={!job.paths.length}
-                  title="Export DXF for import into RDWorks"
-                >
-                  <Download size={13} />
-                  <span>Export RDWorks DXF</span>
-                </button>
-              </div>
+              <p className="panel-note">Storage upload only. Start, frame and jog from the physical cutter.</p>
             </div>
           </Section>
 
+        </>
+      )}
+      {activeTab === 'settings' && (<>
           {/* Ruida Machine & Origin Setup */}
-          <Section title="Ruida Controller & Origin" action={<span className="section-hint">DSP SETUP</span>}>
+          <Section title="Path optimization & kerf" action={<span className="section-hint">DSP SETUP</span>}>
             <div className="field-row">
               <span>Machine Zero Corner</span>
               <div className="origin-corner-picker">
@@ -443,6 +366,8 @@ export default function ProductionPanel({ state, store }: Props) {
               <Segmented compact value={prod.kerfMode} onChange={v => store.setProduction({ kerfMode: v })} options={[{ value: 'center', label: 'Center' }, { value: 'outside', label: 'Outside' }, { value: 'inside', label: 'Inside' }]} />
             </div>
 
+          </Section>
+          <Section title="Entry, exit & overcut" defaultOpen={false}>
             <div className="field-row">
               <span>Cut entry</span>
               <SelectField ariaLabel="Cut entry mode" value={prod.leadMode ?? 'contour-only'} onChange={v => store.setProduction({ leadMode: v })} options={[
@@ -459,9 +384,17 @@ export default function ProductionPanel({ state, store }: Props) {
 
             <div className="num-grid two">
               <NumField label="Overcut (Seal)" value={prod.overcut || 0} onChange={v => store.setProduction({ overcut: Math.max(0, v) })} min={0} precision={1} suffix="mm" />
+            </div>
+          </Section>
+          <Section title="Vector engraving" defaultOpen={false}>
+            <div className="num-grid two">
               <NumField label="Default Scan Pitch" value={prod.hatchSpacing} onChange={v => store.setProduction({ hatchSpacing: Math.max(0.04, v) })} min={0.04} precision={2} suffix="mm" />
             </div>
 
+            <div className="field-row"><span>Scan Hatch Fills</span><Switch description="Scan hatch fills" checked={prod.hatchEngrave} onChange={v=>store.setProduction({hatchEngrave:v})}/></div>
+            <p className="panel-note">Monochrome vector hatching. Per-layer scan pitch overrides the default when configured.</p>
+          </Section>
+          <Section title="Sequencing & travel">
             <div className="switch-stack">
               <div className="field-row">
                 <span>Inside-to-Outside (Cut inner holes first)</span>
@@ -472,18 +405,16 @@ export default function ProductionPanel({ state, store }: Props) {
                 <Switch checked={prod.optimizeOrder} onChange={v => store.setProduction({ optimizeOrder: v })} />
               </div>
               <div className="field-row">
-                <span>Scan Hatch Fills</span>
-                <Switch checked={prod.hatchEngrave} onChange={v => store.setProduction({ hatchEngrave: v })} />
-              </div>
-              <div className="field-row">
                 <span>Show Order Badges</span>
                 <Switch checked={prod.showSequence} onChange={v => store.setProduction({ showSequence: v })} />
               </div>
             </div>
           </Section>
 
+          <Section title="Geometry quality" defaultOpen={false}><p className="panel-note">Machining curves use a 0.005 mm chord-error bound. DXF arcs remain curved through import. These are fixed engine settings; imported bitmap/PDF traces retain their source resolution limits.</p></Section>
           {/* Sheet & Nesting */}
-          <Section title="Sheet & Nesting" action={<span className="section-hint">{sheetW} × {sheetH} mm</span>}>
+          <Section title="Sheet nesting — shelf packing" defaultOpen={false} action={<span className="section-hint">{sheetW} × {sheetH} mm</span>}>
+            <NestingPreview state={state} store={store}/>
             <div className="sheet-diagram">
               <div className="sheet-paper" style={{ aspectRatio: `${sheetRatio}` }}>
                 <div className="sheet-safe" style={{ inset: `${Math.min(38, (prod.margin / Math.max(sheetW, sheetH)) * 100)}%` }} />
@@ -510,7 +441,7 @@ export default function ProductionPanel({ state, store }: Props) {
       )}
 
       {activeTab === 'layers' && (
-        <Section title="RDWorks 16-Color Layer Map" action={<span className="section-hint">{state.doc.layers.length} LAYERS</span>}>
+        <Section title="Layer operations" action={<span className="section-hint">{state.doc.layers.length} LAYERS</span>}>
           <div className="operation-list">
             {state.doc.layers.map((layer, idx) => {
               const op = layerOperation(prod, layer.id)
@@ -520,7 +451,7 @@ export default function ProductionPanel({ state, store }: Props) {
               const rdColor = layer.color
 
               return (
-                <div className={`operation-card ${op.mode === 'ignore' ? 'muted' : ''}`} key={layer.id}>
+                <div className={`operation-card ${op.mode === 'ignore' ? 'muted' : ''}`} key={layer.id} style={{borderLeftColor: OPERATION_COLORS[op.mode]}}>
                   <div className="op-head">
                     {/* RDWorks 16 Color Palette Swatch */}
                     <div className="rd-color-picker" title="RDWorks Layer Color">
@@ -545,25 +476,27 @@ export default function ProductionPanel({ state, store }: Props) {
                       onChange={e => store.setLayerName(layer.id, e.target.value)}
                       title="Click to rename layer"
                     />
-                    <button type="button" className="op-paths" title={`Select visible artwork in ${layer.name}`} onClick={() => { store.setSelection(layer.visible && !layer.locked ? layer.shapes.filter(s => !s.hidden && !s.locked).map(s => s.id) : []); store.setProductionPreview(true) }}>{layerStats?.paths ?? 0} paths · {formatDuration(layerStats?.time ?? 0)}</button>
+                    <button type="button" className="op-paths" title={`Select visible artwork in ${layer.name}`} onClick={() => { store.setSelection(layer.visible && !layer.locked ? layer.shapes.filter(s => !s.hidden && !s.locked).map(s => s.id) : []); if(state.workflow==='preview')store.setProductionPreview(true) }}>{layerStats?.paths ?? 0} paths · {formatDuration(layerStats?.time ?? 0)}</button>
                     <select
                       className="op-select"
                       value={op.mode}
                       onChange={e => store.setLayerMode(layer.id, e.target.value as ProductionMode)}
-                      title="Layer operation"
+                      title={`Operation for ${layer.name}`} aria-label={`Operation for ${layer.name}`}
                     >
                       <option value="cut">Cut</option>
                       <option value="engrave">Scan (Engrave)</option>
                       <option value="score">Score</option>
-                      <option value="dot">Dot (Perforate)</option>
-                      <option value="pen">Pen (Mark)</option>
+                      <option value="dot">Dot (RD export unsupported)</option>
+                      <option value="pen">Pen (RD export unsupported)</option>
                       <option value="ignore">Ignore</option>
                     </select>
                   </div>
 
+                  <div className="operation-summary"><span>{layer.shapes.length} objects · {op.speed} mm/s · {op.minPower ?? op.power}–{op.maxPower ?? op.power}% · {op.passes} pass{op.passes===1?'':'es'}</span><button aria-expanded={!!expandedOps[layer.id]} onClick={()=>setExpandedOps(v=>({...v,[layer.id]:!v[layer.id]}))}>{expandedOps[layer.id]?'Hide':'Edit'} settings</button></div>
+                  <div hidden={!expandedOps[layer.id]}>
                   <div className={`op-preset-row ${op.mode === 'ignore' ? 'hidden' : ''}`}>
                     <select
-                      className="layer-preset-dropdown"
+                      className="layer-preset-dropdown" aria-label={`Apply material preset to ${layer.name}`}
                       onChange={e => {
                         if (e.target.value) {
                           store.applyMaterialPreset(layer.id, e.target.value)
@@ -572,7 +505,7 @@ export default function ProductionPanel({ state, store }: Props) {
                       }}
                       defaultValue=""
                     >
-                      <option value="" disabled>⚡ Apply Material Preset…</option>
+                      <option value="" disabled>Apply built-in preset — replaces settings…</option>
                       {MATERIAL_PRESETS.map(m => (
                         <option key={m.id} value={m.id}>
                           {m.name} ({m.speed} mm/s · {m.power}%)
@@ -581,11 +514,12 @@ export default function ProductionPanel({ state, store }: Props) {
                     </select>
                   </div>
 
+                  <p className="panel-note">Presets replace this layer's operation and process values. Built-in values are examples; they have not been validated for your material and machine.</p>
                   <div className={`op-metrics ${op.mode === 'ignore' ? 'hidden' : ''}`}>
-                    <label><span><Gauge size={9} />SPEED</span><input type="number" value={op.speed} step={1} onChange={e => store.setLayerOperation(layer.id, { speed: Math.max(1, Number(e.target.value)) })} /><em>mm/s</em></label>
-                    <label><span><Zap size={9} />MAX PWR</span><ProcessNumber value={op.maxPower ?? op.power} min={0} max={RUIDA_HARDWARE_LIMITS.maxPowerPct} onChange={v => store.setLayerOperation(layer.id, { maxPower: v })} /><em>%</em></label>
-                    <label><span><Zap size={9} />MIN PWR</span><ProcessNumber value={op.minPower ?? op.maxPower ?? op.power} min={0} max={op.maxPower ?? op.power} onChange={v => store.setLayerOperation(layer.id, { minPower: v })} /><em>%</em></label>
-                    <label><span>PASSES</span><input type="number" value={op.passes || 1} min={1} max={10} onChange={e => store.setLayerOperation(layer.id, { passes: Math.max(1, Number(e.target.value)) })} /></label>
+                    <label><span><Gauge size={9} />Speed</span><input aria-label={`Speed for ${layer.name}`} type="number" value={op.speed} step={1} onChange={e => store.setLayerOperation(layer.id, { speed: Math.max(1, Number(e.target.value)) })} /><em>mm/s</em></label>
+                    <label><span><Zap size={9} />Maximum power</span><ProcessNumber ariaLabel={`Maximum power for ${layer.name}`} value={op.maxPower ?? op.power} min={0} max={RUIDA_HARDWARE_LIMITS.maxPowerPct} onChange={v => store.setLayerOperation(layer.id, { maxPower: v })} /><em>%</em></label>
+                    <label><span><Zap size={9} />Minimum power</span><ProcessNumber ariaLabel={`Minimum power for ${layer.name}`} value={op.minPower ?? op.maxPower ?? op.power} min={0} max={op.maxPower ?? op.power} onChange={v => store.setLayerOperation(layer.id, { minPower: v })} /><em>%</em></label>
+                    <label><span>Passes</span><input aria-label={`Passes for ${layer.name}`} type="number" value={op.passes || 1} min={1} max={10} onChange={e => store.setLayerOperation(layer.id, { passes: Math.max(1, Number(e.target.value)) })} /></label>
                   </div>
                   {(op.minPower ?? 0) > (op.maxPower ?? op.power) && <div className="job-warning">
                     <span>Minimum {op.minPower}% is above maximum {op.maxPower ?? op.power}%.</span>
@@ -646,7 +580,7 @@ export default function ProductionPanel({ state, store }: Props) {
                               checked={!!op.microLink}
                               onChange={e => store.setLayerOperation(layer.id, { microLink: e.target.checked })}
                             />
-                            <span>Micro-Tabs</span>
+                            <span>Micro-Tabs (export blocked)</span>
                           </label>
                           {op.microLink && (
                             <input
@@ -663,6 +597,7 @@ export default function ProductionPanel({ state, store }: Props) {
                       )}
                     </div>
                   )}
+                  </div>
                   <span className="op-glyph" style={{ color: rdColor }}><Icon size={12} /></span>
                 </div>
               )
@@ -676,7 +611,7 @@ export default function ProductionPanel({ state, store }: Props) {
           <strong>Execution sequence</strong>
           <p>Engrave → Score → Cut. {prod.insideOut ? 'Nested closed cuts run inner-first.' : 'Inside-to-Outside is off.'} Each entry runs all of its passes before the next entry.</p>
           <p>Solid lines: laser paths. Dashed lines: travel with laser off. Selected artwork is highlighted.</p>
-          <details>
+          <details open>
             <summary>{job.paths.length} ordered toolpaths</summary>
             <ol className="laser-sequence-list">
               {job.paths.slice(0, sequenceLimit).map(path => <li key={path.id}>
@@ -694,7 +629,7 @@ export default function ProductionPanel({ state, store }: Props) {
           <div className="sim-player-card">
             <div className="sim-head-status">
               <span className={`sim-indicator ${simInfo.laserOn ? 'firing' : 'idle'}`}>
-                <i /> {simInfo.laserOn ? 'LASER FIRING' : 'RAPID G0 TRAVERSE'}
+                <i /> {simInfo.laserOn ? 'Simulated burn' : 'Simulated travel'}
               </span>
               <span className="sim-air-badge">{simInfo.blower ? 'AIR ASSIST: ON' : 'AIR: OFF'}</span>
             </div>
@@ -709,7 +644,7 @@ export default function ProductionPanel({ state, store }: Props) {
             {/* Scrub Slider */}
             <div className="sim-scrubber">
               <input
-                type="range"
+                aria-label="Simulation progress" type="range"
                 min={0}
                 max={1}
                 step={0.001}
@@ -728,11 +663,11 @@ export default function ProductionPanel({ state, store }: Props) {
                 {state.sim.playing ? <Pause size={15} /> : <Play size={15} />}
                 <span>{state.sim.playing ? 'Pause' : 'Play Head'}</span>
               </button>
-              <button className="sim-btn reset" onClick={resetSimulation} title="Reset to Origin">
+              <button aria-label="Reset simulation" className="sim-btn reset" onClick={resetSimulation} title="Reset to Origin">
                 <RotateCcw size={14} />
               </button>
 
-              <div className="sim-speed-pills">
+              <div className="sim-speed-pills" aria-label="Simulation playback speed">
                 {[1, 2, 5, 10, 20].map(s => (
                   <button
                     key={s}
@@ -752,7 +687,7 @@ export default function ProductionPanel({ state, store }: Props) {
         <>
           <Section title="Export Shop & Machine Files" action={<span className="section-hint">RUIDA / SHOP</span>}>
             <div className="output-grid-extended">
-              <button className="export-chip primary" onClick={() => exportFile('rd')}>
+              <button className="export-chip primary" disabled={!!prepared.error} onClick={() => exportFile('rd')}>
                 <Zap size={15} />
                 <div className="chip-text">
                   <strong>Ruida .RD</strong>
@@ -804,12 +739,7 @@ export default function ProductionPanel({ state, store }: Props) {
         </>
       )}
 
-      <Section title="Job checks" action={<button className="link-btn" onClick={() => { setActiveTab('sim'); store.setProductionPreview(true) }}>View sequence</button>}>
-        {[...job.errors, ...job.warnings].map((w, i) => (
-          <div className="job-warning" key={i}><AlertTriangle size={13} /><span>{w}</span></div>
-        ))}
-
-      </Section>
+      <JobChecks state={state} store={store} job={job} error={prepared.error}/>
 
       <div className="inspector-foot">
         <span>{prepared.error ? 'JOB BLOCKED' : prod.preview ? 'PREVIEW ACTIVE' : 'JOB READY'}</span>

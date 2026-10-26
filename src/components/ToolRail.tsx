@@ -11,17 +11,17 @@ import { Kbd } from './ui'
 interface Props { state: EditorState; store: EditorStore }
 
 const tools: { id: Tool; label: string; shortcut: string; icon: typeof MousePointer2; group: number }[] = [
-  { id: 'select', label: 'Select', shortcut: 'V', icon: MousePointer2, group: 0 },
-  { id: 'node', label: 'Shape / Nodes', shortcut: 'F10', icon: Spline, group: 0 },
-  { id: 'pen', label: 'Pen', shortcut: 'P', icon: PenTool, group: 1 },
-  { id: 'knife', label: 'Knife', shortcut: 'K', icon: Scissors, group: 1 },
-  { id: 'rect', label: 'Rectangle', shortcut: 'R', icon: Square, group: 1 },
-  { id: 'ellipse', label: 'Ellipse', shortcut: 'E', icon: Circle, group: 1 },
-  { id: 'polygon', label: 'Polygon', shortcut: 'Y', icon: Hexagon, group: 1 },
-  { id: 'line', label: 'Line', shortcut: 'L', icon: Slash, group: 1 },
-  { id: 'text', label: 'Text', shortcut: 'T', icon: Type, group: 1 },
-  { id: 'hand', label: 'Pan', shortcut: 'H', icon: Hand, group: 2 },
-  { id: 'zoom', label: 'Zoom', shortcut: 'Z', icon: ZoomIn, group: 2 },
+  {id:'select',label:'Select · Shift for multiple · drag blank area for marquee',shortcut:'V',icon:MousePointer2,group:0},
+  {id:'rect',label:'Rectangle',shortcut:'R',icon:Square,group:1},
+  {id:'ellipse',label:'Ellipse',shortcut:'E',icon:Circle,group:1},
+  {id:'polygon',label:'Polygon',shortcut:'Y',icon:Hexagon,group:1},
+  {id:'line',label:'Line',shortcut:'L',icon:Slash,group:1},
+  {id:'pen',label:'Pen',shortcut:'P',icon:PenTool,group:1},
+  {id:'text',label:'Text',shortcut:'T',icon:Type,group:1},
+  {id:'node',label:'Shape / Nodes',shortcut:'F10',icon:Spline,group:2},
+  {id:'knife',label:'Knife',shortcut:'K',icon:Scissors,group:2},
+  {id:'hand',label:'Pan',shortcut:'H',icon:Hand,group:3},
+  {id:'zoom',label:'Zoom',shortcut:'Z',icon:ZoomIn,group:3},
 ]
 
 export default function ToolRail({ state, store }: Props) {
@@ -59,9 +59,12 @@ export default function ToolRail({ state, store }: Props) {
               {divider && <span className="tool-divider" />}
               <button
                 type="button"
+                aria-pressed={state.tool===t.id}
                 className={`tool-btn ${state.tool === t.id ? 'active' : ''}`}
                 onClick={() => store.setTool(t.id)}
-                data-tooltip={t.label}
+                data-tooltip={`${t.id==='select'?'Select':t.label} (${t.shortcut})`}
+                aria-label={`${t.label} (${t.shortcut})`}
+                title={`${t.label} (${t.shortcut})`}
               >
                 <Icon size={19} strokeWidth={1.7} />
                 <span className="tool-key">{t.shortcut}</span>
@@ -119,7 +122,7 @@ export default function ToolRail({ state, store }: Props) {
           <Grid3X3 size={17} />
         </button>
         <span className="rail-version">v1.0</span>
-        <span className="rail-shortcut"><Kbd>F10</Kbd></span>
+
       </div>
     </aside>
   )

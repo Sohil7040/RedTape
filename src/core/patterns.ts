@@ -1,10 +1,10 @@
-import { Pt, boundsCenter, deg, dist, rotateSubpaths, translateSubpaths, uid } from './geometry'
+import { Bounds, Pt, boundsCenter, deg, dist, rotatePoint, rotateSubpaths, translateSubpaths, uid } from './geometry'
 import {
   GridPatternSettings, RadialPatternSettings, Shape, cloneShape, makeFill, makeShadow, makeStroke, shapeBounds,
 } from './model'
 
-export function gridPattern(shape: Shape, s: GridPatternSettings): Shape[] {
-  const b = shapeBounds(shape)
+export function gridPattern(shape: Shape, s: GridPatternSettings, selectionBounds?: Bounds): Shape[] {
+  const b = selectionBounds ?? shapeBounds(shape)
   const cols = Math.max(1, Math.round(s.columns))
   const rows = Math.max(1, Math.round(s.rows))
   const stepX = s.mode === 'spacing' ? b.w + s.dx : s.dx
@@ -25,69 +25,53 @@ export function gridPatternCount(s: GridPatternSettings): number {
   return Math.max(1, Math.round(s.columns)) * Math.max(1, Math.round(s.rows)) - 1
 }
 
-export function radialPattern(shape: Shape, s: RadialPatternSettings): Shape[] {
-  const b = shapeBounds(shape)
-  const center = boundsCenter(b)
-  const pivot = { x: s.pivotX, y: s.pivotY }
-  const copies = Math.max(1, Math.round(s.copies))
-  const span = s.span
-  const step = radialStep(span, copies)
-  const baseVector = { x: center.x - pivot.x, y: center.y - pivot.y }
-  const baseAngle = Math.atan2(baseVector.y, baseVector.x)
-  const radius = s.radius > 0 ? s.radius : dist(center, pivot)
-  const start = baseAngle + (s.startAngle * Math.PI) / 180
-  const out: Shape[] = []
-  for (let k = 1; k <= copies; k++) {
-    const theta = start + (k * step * Math.PI) / 180
-    const target = { x: pivot.x + Math.cos(theta) * radius, y: pivot.y + Math.sin(theta) * radius }
-    const orientation = s.rotateWithShape ? ((s.startAngle + k * step) * Math.PI) / 180 : 0
-    let subpaths = shape.subpaths
-    if (orientation) subpaths = rotateSubpaths(subpaths, center, orientation)
-    subpaths = translateSubpaths(subpaths, target.x - center.x, target.y - center.y)
-    const copy = cloneShape(shape, 0, 0, `${shape.name} · ${String(k + 1).padStart(2, '0')}`)
-    copy.id = uid('shape')
-    copy.subpaths = subpaths
-    if (shape.clip) {
-      let clip = shape.clip
-      if (orientation) clip = rotateSubpaths(clip, center, orientation)
-      copy.clip = translateSubpaths(clip, target.x - center.x, target.y - center.y)
-    }
-    copy.fill = makeFill(shape.fill)
-    copy.stroke = makeStroke(shape.stroke)
-    copy.shadow = makeShadow(shape.shadow)
-    if (copy.text) {
-      copy.text = {
-        ...copy.text,
-        box: { ...copy.text.box, x: copy.text.box.x + target.x - center.x, y: copy.text.box.y + target.y - center.y },
-        rotation: (shape.text?.rotation ?? 0) + orientation,
-      }
-    }
-    copy.meta = { ...(shape.meta ?? {}), pattern: 'radial', copy: k, angle: start + (k * step * Math.PI) / 180 }
-    // keep text untouched if present: rotate only path geometry; text copies stay upright
-    out.push(copy)
-  }
-  return out
+export interface RadialLayout {
+  center: Pt; pivot: Pt; radius: number; step: number; sourceOnRing: boolean; reservesSource: boolean
+  placements: { center: Pt; angle: number; rotation: number }[]
+}
+/** One authoritative layout for creation and preview. Angles are relative to the source ray. */
+export function radialLayout(bounds: Bounds, s: RadialPatternSettings): RadialLayout {
+  if([s.copies,s.radius,s.startAngle,s.span,s.pivotX,s.pivotY].some(v=>!Number.isFinite(v)))throw new Error('Enter finite circular-pattern settings')
+  const center=boundsCenter(bounds),pivot={x:s.pivotX,y:s.pivotY}
+  const copies=Math.max(1,Math.min(72,Math.round(s.copies)))
+  const distance=dist(center,pivot),radius=s.radius>0?s.radius:distance
+  const base=Math.atan2(center.y-pivot.y,center.x-pivot.x)
+  const offset=s.startAngle*Math.PI/180,span=Math.max(-360,Math.min(360,s.span))
+  const full=Math.abs(span)>=359.999
+  const sourceOnRing=radius>1e-8&&Math.abs(radius-distance)<=Math.max(1e-7,radius*1e-9)
+  const zeroOffset=Math.abs(Math.sin(offset))<1e-9&&Math.cos(offset)>0
+  const reservesSource=!full||(sourceOnRing&&zeroOffset)
+  const step=radialStep(span,copies,reservesSource)
+  const placements=Array.from({length:copies},(_,index)=>{
+    const angle=s.startAngle+(index+(reservesSource?1:0))*step
+    const theta=base+angle*Math.PI/180
+    return {center:{x:pivot.x+Math.cos(theta)*radius,y:pivot.y+Math.sin(theta)*radius},angle:deg(theta),rotation:s.rotateWithShape?angle*Math.PI/180:0}
+  })
+  return {center,pivot,radius,step,sourceOnRing,reservesSource,placements}
 }
 
-export function radialPreviewCenters(self: Shape, s: RadialPatternSettings): { center: Pt; angle: number }[] {
-  const b = shapeBounds(self)
-  const center = boundsCenter(b)
-  const pivot = { x: s.pivotX, y: s.pivotY }
-  const copies = Math.max(1, Math.round(s.copies))
-  const step = radialStep(s.span, copies)
-  const baseAngle = Math.atan2(center.y - pivot.y, center.x - pivot.x)
-  const radius = s.radius > 0 ? s.radius : dist(center, pivot)
-  const start = baseAngle + (s.startAngle * Math.PI) / 180
-  const out: { center: Pt; angle: number }[] = []
-  for (let k = 1; k <= copies; k++) {
-    const theta = start + (k * step * Math.PI) / 180
-    out.push({ center: { x: pivot.x + Math.cos(theta) * radius, y: pivot.y + Math.sin(theta) * radius }, angle: deg(theta) })
-  }
-  return out
+export function radialPattern(shape: Shape, s: RadialPatternSettings, selectionBounds?: Bounds): Shape[] {
+  const layout=radialLayout(selectionBounds??shapeBounds(shape),s),center=layout.center
+  return layout.placements.map((placement,index)=>{
+    const {center:target,rotation:orientation}=placement
+    const move=(paths:typeof shape.subpaths)=>translateSubpaths(orientation?rotateSubpaths(paths,center,orientation):paths,target.x-center.x,target.y-center.y)
+    const copy=cloneShape(shape,0,0,`${shape.name} · ${String(index+2).padStart(2,'0')}`)
+    copy.subpaths=move(shape.subpaths)
+    if(shape.clip)copy.clip=move(shape.clip)
+    if(copy.text){
+      const box=copy.text.box,boxCenter=rotatePoint(boundsCenter(box),center,orientation)
+      copy.text={...copy.text,box:{...box,x:boxCenter.x-box.w/2+target.x-center.x,y:boxCenter.y-box.h/2+target.y-center.y},rotation:(shape.text?.rotation??0)+orientation}
+    }
+    copy.meta={...(shape.meta??{}),pattern:'radial',copy:index+1,angle:placement.angle*Math.PI/180}
+    return copy
+  })
 }
 
-export function radialStep(span: number, copies: number): number {
-  const n = Math.max(1, Math.round(copies))
-  if (Math.abs(span) >= 359.999) return span / (n + 1)
-  return span / n
+export function radialPreviewCenters(self: Shape, s: RadialPatternSettings, selectionBounds?: Bounds): { center: Pt; angle: number }[] {
+  return radialLayout(selectionBounds??shapeBounds(self),s).placements.map(({center,angle})=>({center,angle}))
+}
+
+export function radialStep(span: number, copies: number, reserveSource = true): number {
+  const n=Math.max(1,Math.min(72,Math.round(copies))),angle=Math.max(-360,Math.min(360,span))
+  return Math.abs(angle)>=359.999?angle/(n+(reserveSource?1:0)):angle/n
 }

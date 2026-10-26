@@ -48,14 +48,26 @@ function intersectionHits(sub: Subpath, cut: Pt[]): Hit[] {
       for (let j = 0; j < cuts.length - 1; j++) {
         const h = lineSegIntersect(a0, a1, cuts[j], cuts[j + 1])
         if (!h) continue
-        // refine target parameter by nearest point on cubic
-        const near = nearestPointOnSegment(seg, h, 64)
-        const pos = seg.index + Math.min(0.999999, Math.max(0, near.t))
-        if (hits.some(x => Math.abs(x.pos - pos) < 0.008)) continue
+        // Refine the sampled crossing against the actual cubic and knife line.
+        let lo=k/n,hi=(k+1)/n
+        const side=(t:number)=>{const p=cubicPoint(seg,t),a=cuts[j],b=cuts[j+1];return (b.x-a.x)*(p.y-a.y)-(b.y-a.y)*(p.x-a.x)}
+        const f0=side(lo),f1=side(hi)
+        let root:number
+        if(Math.abs(f0)<1e-12)root=lo
+        else if(Math.abs(f1)<1e-12)root=hi
+        else { for(let step=0;step<42;step++){const mid=(lo+hi)/2;if(side(mid)*f0>0)lo=mid;else hi=mid}root=(lo+hi)/2 }
+        const near={t:root,point:cubicPoint(seg,root)}
+        // Adjacent segments both report a corner hit. Canonicalise shared
+        // anchors (including a closed contour's seam) before deduplicating.
+        const t = near.t < 1e-5 ? 0 : near.t > 1 - 1e-5 ? 1 : near.t
+        const rawPos = seg.index + t
+        const pos = sub.closed ? rawPos % segs.length : rawPos
+        if (!sub.closed && (pos < 1e-5 || pos > segs.length - 1e-5)) continue
+        if (hits.some(x => Math.abs(x.pos - pos) < 1e-5)) continue
         // position along cut polyline
-        const d0 = dist(cuts[j], h), d1 = dist(h, cuts[j + 1])
+        const d0 = dist(cuts[j], near.point), d1 = dist(near.point, cuts[j + 1])
         const u = d0 / Math.max(1e-9, d0 + d1)
-        hits.push({ pos, cutPos: j + u, point: h })
+        hits.push({ pos, cutPos: j + u, point: near.point })
       }
     }
   }
@@ -200,6 +212,7 @@ export interface CutResult {
 export function cutShape(shape: Shape, cutInput: Pt[], settings: KnifeSettings): CutResult | null {
   if (cutInput.length < 2) return null
   const cut = dedupe(cutInput)
+  if (cut.length < 2) return null
   const pieces: Shape[] = []
   let totalCuts = 0
   for (let si = 0; si < shape.subpaths.length; si++) {
@@ -236,13 +249,13 @@ export function cutShape(shape: Shape, cutInput: Pt[], settings: KnifeSettings):
       }
     }
   }
-  if (!pieces.length) return null
+  if (!pieces.length || !totalCuts) return null
   return { sourceId: shape.id, pieces, cuts: totalCuts }
 }
 
 function dedupe(pts: Pt[]): Pt[] {
   const out: Pt[] = []
-  for (const p of pts) if (!out.length || dist(p, out[out.length - 1]) > 0.01) out.push(clone(p))
+  for (const p of pts) if (!out.length || dist(p, out[out.length - 1]) > 1e-9) out.push(clone(p))
   return out
 }
 

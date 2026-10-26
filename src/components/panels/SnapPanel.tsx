@@ -31,30 +31,23 @@ export default function SnapPanel({ state, store }: Props) {
       <div className={`snap-master ${snap.enabled ? 'on' : ''}`}>
         <div className="snap-master-icon"><Magnet size={20} /></div>
         <div className="snap-master-copy">
-          <span className="eyebrow">OBJECTSNAPDS</span>
-          <strong>{snap.enabled ? 'Snapping armed' : 'Snapping off'}</strong>
-          <p>{snap.enabled ? 'Gravity filter is sampling 3D spatial index' : 'Canvas interactions are free'}</p>
+          <span className="eyebrow">OBJECT SNAPPING</span>
+          <strong>{snap.enabled ? 'Snapping on' : 'Snapping off'}</strong>
+          <p>{snap.enabled ? 'Align with nearby points, edges and guides' : 'Draw and move freely'}</p>
         </div>
         <Switch checked={snap.enabled} onChange={v => store.setSnapSettings({ enabled: v })} />
       </div>
 
-      <Section title="Gravity field" action={<span className="section-hint">{snap.radius} PX</span>}>
-        <div className="gravity-viz">
-          <span className="g-ring r1" /><span className="g-ring r2" /><span className="g-ring r3" />
-          <span className="g-axis h" /><span className="g-axis v" />
-          <span className="g-node a" /><span className="g-node b" /><span className="g-node c" />
-          <span className="g-cursor"><MousePointer2 size={15} /></span>
-          <div className="g-caption"><strong>{snap.radius}px</strong><span>SCREEN SPACE</span></div>
-        </div>
+      <Section title="Snap distance" action={<span className="section-hint">{snap.radius} PX</span>}>
         <div className="slider-field">
           <span>Radius</span>
-          <input type="range" min={4} max={22} value={snap.radius} onChange={e => store.setSnapSettings({ radius: Number(e.target.value) })} />
+          <input aria-label="Snap radius" type="range" min={4} max={22} value={snap.radius} onChange={e => store.setSnapSettings({ radius: Number(e.target.value) })} />
           <span className="range-value">{snap.radius}px</span>
         </div>
-        <p className="panel-note">Candidate geometry is transformed into screen space, then the nearest point within the gravity radius wins. Snap radius stays constant while zooming.</p>
+        <p className="panel-note">Snaps show a label beside the pointer. This distance stays the same on screen while zooming. Press N to toggle snapping.</p>
       </Section>
 
-      <Section title="Snap targets" action={<button className="link-btn" onClick={() => store.setSnapSettings({ grid: true, nodes: true, midpoints: true, centers: true, intersections: true, quadrants: true, guides: true })}>All on</button>}>
+      <Section title="Snap targets" action={<button className="link-btn" onClick={() => store.setSnapSettings({ grid: true, nodes: true, midpoints: true, centers: true, intersections: true, quadrants: true, guides: true, perpendicular:true, tangent:true, dynamicGuides:true })}>All targets</button>}>
         <div className="toggle-grid">
           {options.map(o => (
             <Toggle key={o.key} icon={o.icon} label={o.label} active={!!snap[o.key]} onClick={() => store.setSnapSettings({ [o.key]: !snap[o.key] } as Partial<SnapSettings>)} hint={o.hint} />
@@ -91,16 +84,6 @@ export default function SnapPanel({ state, store }: Props) {
         <p className="panel-note">Tip: drag a guide back onto the ruler to delete it.</p>
       </Section>
 
-      <Section title="Engine">
-        <div className="engine-stats">
-          <div><span>Arbiter</span><strong>Min distance</strong></div>
-          <div><span>Index</span><strong>QuadTree</strong></div>
-          <div><span>Transform</span><strong>Viewport 3×3</strong></div>
-          <div><span>Priority</span><strong>Kind + distance</strong></div>
-        </div>
-        <div className="legend-line"><Target size={12} /><span>Candidates outside the radius are discarded before arbitration.</span></div>
-        <div className="legend-line"><Scan size={12} /><span>Dynamic guides project full-canvas alignment rays.</span></div>
-      </Section>
     </div>
   )
 }

@@ -1,10 +1,10 @@
 # Corelith Studio
 
-A modern, interactive vector-design laboratory built as a clean-room implementation of the architecture described in **CDGS-CORE-ALGO-2026** — the CorelDRAW drawing pipeline, Bézier node model, gravity snapping engine, knife topology, and procedural pattern systems.
+A vector design and laser job preparation app with Bézier editing, snapping, Knife and rectangular/circular patterns. Selected curve arithmetic recovered from the supplied Corel and RDWorks binaries is integrated; this is not their original source project.
 
-![Corelith Studio](preview.png)
+![Corelith clean startup](docs/clean-startup.png)
 
-![Laser production preview](preview-production.png)
+Current verified state: **109 tests passed** (99 JavaScript + 10 Python), production build passed. Installed Linux release: `2026-10-26T12-36-19-596Z`. See [current status and documentation index](docs/CURRENT_STATUS.md) and [next-session handoff](NEXT_SESSION.md).
 
 ## Run it
 
@@ -16,6 +16,10 @@ npm run dev
 
 Open the URL printed by Vite (defaults to `http://localhost:5178`).
 
+## Startup and recovering work
+
+Every launch/reload opens a blank document with one empty sheet. Previous artwork is no longer opened automatically. Use **File → Restore last autosave** to recover the last locally saved session, or **File → Open project** for exported projects. The untouched startup canvas does not overwrite the prior autosave; autosaving resumes when the document changes. The showcase is available only through **File → Restore showcase demo**.
+
 ## Desktop app (Linux)
 
 Run `npm run desktop:install` to build and install an independent copy with Desktop and application-menu shortcuts named **Corelith Studio**. This uses installed Chrome/Chromium in a dedicated application window, a bundled Node runtime, and system Python 3 for the upload bridge. The launcher starts the local production server automatically at **http://127.0.0.1:5188**. It needs no development server or npm command for everyday use. Explicit storage uploads are enabled; the app never starts cutting or sends frame/jog/firing commands.
@@ -26,6 +30,20 @@ Installed releases live in `~/.local/share/corelith-studio/releases/`, separatel
 npm run build     # type-check + production build
 npm run preview   # serve the production build
 ```
+
+## Redesigned workspaces
+
+Use **Design → Laser → Preview & Send** in the top bar. Design keeps drawing, node editing, snapping and patterns together. Laser contains expandable layer operations and optimization. Preview & Send contains the theoretical summary/simulation, connection review and output. The top-bar Upload action opens review; it never sends by itself. Verify the connection, review the job, then use **Upload to Machine Storage** explicitly.
+
+**Ctrl/Cmd+K** searches commands. **File → Export…** groups project backups, artwork and machine formats. The top bar reports actual local autosave success/failure. Light/dark theme, panel preferences and expandable sections persist separately from project geometry. Objects are searchable; Sheets manages existing sheet actions. On narrow screens, panels collapse and open one at a time. Use a desktop/laptop for precision production work.
+
+Read the [redesign audit](docs/ui-redesign-audit.md) and [implementation report, screenshots and file list](docs/ui-redesign-report.md).
+
+## Drawing and repeating artwork
+
+For a circle, select an ellipse and click **Make circle (W = H)** under Transform. It uses the current width as diameter, preserves the centre and locks proportions; change W or H to resize the circle. Unlock aspect ratio when you want independent dimensions. An existing ellipse keeps its proportions while locked, so the lock alone does not make it circular. Number fields commit only actual edits; simply leaving a rounded field no longer changes the design.
+
+Select an object and use the property bar for **Rectangular pattern**, **Circular pattern** or **Snapping**. Multi-object patterns preserve the selection as an assembly. Press **K** for Knife; its property bar offers path mode, Slice/Gap/Overlap and selected-only/all-under-path scope. Knife edits drawing geometry; laser operation settings remain under Laser → Layers. Press **N** to toggle snapping. See [drawing controls and verified limits](docs/RDWORKS_REVERSE_ENGINEERING.md).
 
 ## Laser / sign production workflow
 
@@ -40,7 +58,7 @@ The **Laser** inspector turns artwork into a machine-ready job:
 - **Image/PDF preparation** — preview a selected PDF page or image, set physical size and threshold, then import editable cutting outlines or vector engraving lines.
 - **Preflight warnings** — skipped text objects, open cut contours, missing cut process, hatching limits and geometry outside the sheet.
 
-Open the **Laser** tab in the inspector or press `Shift+Ctrl/Cmd+L`. Icons in the layer tree show the active process for each layer. Import is available from **File → Import vectors / image / PDF** or from the Laser output section.
+Open the **Laser** workspace in the top bar or press `Shift+Ctrl/Cmd+L`. Icons in the layer tree show the active process for each layer. Import is available from **File → Import vectors / image / PDF** or from the Laser output section.
 
 ### Image and PDF import
 
@@ -54,7 +72,7 @@ After a storage upload, the cutter LCD may continue showing the current design o
 
 The **Estimated job time** card includes every pass, lead and laser-off travel. Expand **Time breakdown & allowance** for operation and layer durations and an optional 0–300% planning allowance. This allowance is saved with the project and included in the JSON handoff, but never changes machine speed, power, RD bytes or the simulation timeline. The baseline uses path length / configured speed; acceleration, cornering and controller delays are not modelled. Travel assumes the preview start point, so actual head position can also affect elapsed time. Calibrate the allowance against measured jobs on your machine.
 
-Set each layer's operation, speed, minimum/maximum power, passes and air assist under **Laser → Layers**. Jobs run engrave → score → cut. With **Inside-to-Outside** enabled (the default), nested closed cut contours run before their containing outlines; this also applies when rapid optimisation is off. Engraving currently uses vector hatching, rather than native photo/raster engraving.
+Set each layer's operation, speed, minimum/maximum power, passes and air assist under **Laser → Operations**. Jobs run engrave → score → cut. With **Inside-to-Outside** enabled (the default), nested closed cut contours run before their containing outlines; this also applies when rapid optimisation is off. Engraving currently uses vector hatching, rather than native photo/raster engraving.
 
 **Text:** select text and use **Design → Typography → Convert selected text to curves**, or use **Convert job text to curves** beside the laser preflight error. Conversion is undoable, retains object/layer identity, and includes real glyph contours and holes. Canvas text and conversion use bundled Liberation Sans/Serif/Mono (Regular or Bold); the legacy family choices resolve to these compatible families. Unsupported glyphs and scripts needing complex shaping fail with an explanation; import outlined SVG for those scripts. Text is never silently omitted from an uploaded job. [OpenType parser documentation](https://github.com/opentypejs/opentype.js/) and font licensing are included in `public/fonts/LICENSE.txt`.
 
@@ -64,11 +82,11 @@ Set each layer's operation, speed, minimum/maximum power, passes and air assist 
 
 Power fields commit on Enter or blur, so intermediate digits cannot alter linked minimum power. Changing a layer to Score/Cut/Engrave preserves entered process settings; material presets remain an explicit way to replace them. To match a working RDWorks score, compare speed, minimum power, maximum power, passes and air assist. Score uses vector cut motion. See [the RDWorks comparison](docs/RDWORKS_COMPARISON.md) and the read-only `scripts/inspect-rd-settings.mjs` tool.
 
-**Contour entry:** **Laser → Machine → Cut entry → Contour only** is the default, including for older projects with saved lead lengths. Burning starts on the design; initial travel remains laser-off. Optional **Outer outlines only** enables configured leads on outer contours while keeping internal cuts free of leads. **All closed contours** explicitly enables them on internal contours too. Rapid optimization chooses nearby existing starting vertices without changing contour winding or dimensions. Regenerate previously exported/uploaded RD files to apply these changes.
+**Contour entry:** **Laser → Optimization → Entry, exit & overcut → Contour only** is the default, including for older projects with saved lead lengths. Burning starts on the design; initial travel remains laser-off. Optional **Outer outlines only** enables configured leads on outer contours while keeping internal cuts free of leads. **All closed contours** explicitly enables them on internal contours too. Rapid optimization chooses nearby existing starting vertices without changing contour winding or dimensions. Regenerate previously exported/uploaded RD files to apply these changes.
 
-**Layer colours:** click the colour swatch beside a layer in Artwork for a custom colour, or select a standard palette colour in **Laser → Layers**. Choosing a colour recolours the layer's existing objects (outline, fill colour and gradient stops), without enabling absent fills/outlines. Newly added/imported objects and objects transferred into that layer inherit it. Other layers retain their colours. Laser paths and RD layer metadata use the layer colour. Undo restores the previous colours.
+**Layer colours:** click the colour swatch beside a layer in Artwork for a custom colour, or select a standard palette colour in **Laser → Operations**. Choosing a colour recolours the layer's existing objects (outline, fill colour and gradient stops), without enabling absent fills/outlines. Newly added/imported objects and objects transferred into that layer inherit it. Other layers retain their colours. Laser paths and RD layer metadata use the layer colour. Undo restores the previous colours. Pattern copies retain the source appearance; changing the layer colour later recolours them along with the other layer objects.
 
-**Workflow:** the sticky Design → Prepare → Preview → Send bar keeps readiness and time visible. Layer path/time buttons select that layer's editable artwork. Preview shows a full selectable execution list, with paged expansion for large jobs; it follows generated ordering and all passes. Solid paths show burning; dashed paths show travel. Selected toolpaths remain bright while other paths are dimmed. Selected hollow shapes/groups can be dragged from their empty interior; Shift still adds/removes selection and blank space starts a marquee.
+**Workflow:** Design → Laser → Preview & Send keeps editing, preparation and transfer review in one document. Preview shows the estimated time and a complete selectable execution list with paged expansion. Solid paths show burning; dashed paths show travel. Selected toolpaths remain bright while other paths are dimmed. Selected hollow shapes/groups can be dragged from their empty interior; Shift adds/removes selection and blank space starts a marquee.
 
 ## Laser preparation and sending
 
@@ -83,7 +101,7 @@ npm run laser:preview # serve that build + bridge at http://127.0.0.1:5179
 
 `npm run dev` and `npm run preview` provide the same bridge in read-only mode. Stop an existing server before launching another on the same port. The app never starts a job or sends frame/jog/firing commands. Upload requires clicking **Send to Laser Storage**.
 
-The saved EVA II 43 profile is **192.168.1.11 / UDP 50201**, confirmed by the working GEN100.RD transfer. In **Laser → Machine**, Verify sends the UDP handshake. Connection settings persist; the reset button restores the verified profile. Review the visible job preflight, dimensions, material parameters and final eight-character filename, then send. Progress counts acknowledged bytes; read-only FTP readback verifies stored bytes and shows the controller file index when available. Interrupted status reads never automatically resend file data.
+The saved EVA II 43 profile is **192.168.1.11 / UDP 50201**, confirmed by the working GEN100.RD transfer. In **Preview & Send → Connection**, Verify sends the UDP handshake. Connection settings persist; the reset button restores the verified profile. Review the visible job preflight, dimensions, material parameters and final eight-character filename, then send. Progress counts acknowledged bytes; read-only FTP readback verifies stored bytes and shows the controller file index when available. Interrupted status reads never automatically resend file data.
 
 Use `.rd` for the controller and `.dxf` to exchange supported geometry with RDWorks. Native `.rld` export is unavailable; older Corelith-generated `.rld` files were not native RDWorks documents. RD import recovers vector motion for inspection and warns that orientation/process settings must be reviewed.
 
@@ -138,17 +156,19 @@ It accepts untransformed M/L/H/V/C/S/Z paths, rectangles and circles and writes 
 - Snapping works while moving objects, drawing, resizing and dragging nodes/handles.
 
 ### Knife / cut engine
-- **2-point**, **freehand** and **Bézier (smoothed spline)** cut modes.
+- **2-point** accepts click–click or drag; **freehand** cuts on release; **Bézier (smoothed spline)** uses points followed by Cut or Enter. Esc cancels.
 - Curve/polyline intersection, boundary-chain extraction, topology rebuilding.
 - **Auto-close** produces watertight closed halves; disabled mode yields open contour chains.
 - **Gap** mode offsets the closure by ±W/2 (physical channel); **Overlap** extends both halves for seam-free vinyl/sign work.
 - Preserves fill, outline, opacity, shadow and layer.
 - Cut all objects under the path or only the current selection.
-- Works with open contours too.
+- Works with open contours too. Closed contours need two boundary crossings. Compound paths and more than two crossings are rejected without modifying the originals.
+- Small cuts use a two-screen-pixel gesture threshold, and curved hits are refined against the actual Bézier curve. See [usage, fixes and verification](docs/KNIFE_PATTERN_UPLOAD_FIXES.md).
 
 ### Patterns
-- **Rectangular / step-and-repeat**: columns, rows, offset vs. gap spacing, independent +X/−X/+Y/−Y directions, live Cartesian preview and formula.
-- **Circular / radial**: copy count, pivot, radius, start angle, angular span, rotate-with-shape vs. keep-upright, live polar preview and matrix formula.
+- **Rectangular / step-and-repeat**: columns, rows, offset vs. gap spacing, independent +X/−X/+Y/−Y directions, schematic grid preview and formula.
+- **Circular / radial**: new-copy count, pivot, radius (0 = automatic), angle offset, signed angular span, Rotate/Upright orientation, actual geometry preview and step/radius readouts. Preview warns about off-sheet copies.
+- Full-circle spacing includes the original only if it occupies the unshifted source position on the ring. Otherwise new copies fill the ring. Apply keeps the original selection; a fresh source gets a nearby pivot. Positive spans run clockwise, negative spans counterclockwise.
 - Copies inherit style and are added to the source layer; the source remains intact.
 - `Ctrl/Cmd+Shift+D` opens the pattern engine.
 - `Shift+Ctrl/Cmd+L` opens the laser job preview.
@@ -156,7 +176,7 @@ It accepts untransformed M/L/H/V/C/S/Z paths, rectangles and circles and writes 
 ### UX
 - Tool rail with V/F10/P/K/R/E/Y/L/T/H shortcuts, contextual options bar, layer tree, inspector, status bar, toasts, undo/redo, autosave.
 - Arrow-key nudging, marquee selection, shift-constrained drawing, resize handles, rotation handle (±15° with Shift).
-- Keyboard shortcut sheet inside the canvas (`KEYS` chip) and an About panel under **File → About Corelith**.
+- Keyboard shortcut sheet under **File → Keyboard shortcuts** (or `?`), command search with Ctrl/Cmd+K, and **File → About Corelith**.
 
 ## Architecture
 
@@ -192,8 +212,10 @@ Everything runs locally in the browser. Projects/autosaves are stored in `localS
 
 ## Documentation and latest verification
 
-As of 26 October 2026, the last implementation checks passed **60 JavaScript + 10 Python tests** and the production build. The installed desktop release is `2026-10-26T09-26-44-613Z`; image/PDF rendering was checked in both development and that production build. These checks do not establish physical cutting accuracy or automatic LCD refresh.
+As of 26 October 2026, the last implementation checks passed **90 JavaScript + 10 Python tests** and the production build. The installed desktop release is `2026-10-26T11-46-04-978Z`; drawing controls were browser checked and the updated desktop launcher passed its readiness check. Image/PDF rendering was also checked in the preceding production release. These checks do not establish physical cutting accuracy or automatic LCD refresh.
 
+- [UI redesign report](docs/ui-redesign-report.md): implementation, milestone checks, screenshots and changed files.
+- [Native curve analysis and drawing tools](docs/RDWORKS_REVERSE_ENGINEERING.md): recovered routines, curve-quality measurements, Knife, snapping and patterns.
 - [Image/PDF import guide](docs/IMAGE_PDF_IMPORT.md): usage, tracing limits and troubleshooting.
 - [App audit](docs/APP_AUDIT.md): repaired faults, workflow and verification history.
 - [RDWorks comparison](docs/RDWORKS_COMPARISON.md): path and scoring evidence.

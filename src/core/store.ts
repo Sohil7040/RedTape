@@ -1,6 +1,7 @@
+import { Workflow, ProductionTab, Theme, loadWorkspace, WORKSPACE_KEY } from './workspace'
 import { useSyncExternalStore } from 'react'
 import {
-  Bounds, PathNode, Pt, Subpath, add, boundsCenter, clamp, cloneNode, cloneSubpaths, cubicPoint, dist,
+  Bounds, PathNode, Pt, Subpath, add, boundsCenter, clamp, cloneNode, cloneSubpaths, cubicPoint, dist, ellipseSubpaths,
   makeNode, rad, rotateSubpaths, scaleSubpaths, segmentAt, splitCubic, sub, translateNode, translateSubpaths, uid,
 } from './geometry'
 import {
@@ -11,7 +12,7 @@ import {
   makeStroke, nextShapeName, selectionBounds, shapeBounds, applyLayerColor, RDWORKS_PALETTE,
 } from './model'
 import { collectStaticCandidates, snapPoint, SnapHit, SnapRay, alignmentSnap } from './snapping'
-import { cutShapes } from './knife'
+import { cutShapes, smoothCutPath } from './knife'
 import { gridPattern, radialPattern } from './patterns'
 import { formatDuration, nestShapes } from './production'
 import { booleanMultipleShapes, BooleanOp } from './booleans'
@@ -53,6 +54,10 @@ export interface LaserSimulationState {
 
 export interface EditorState {
   doc: DocumentModel
+  workflow: Workflow
+  productionTab: ProductionTab
+  theme: Theme
+  compactView: boolean
   selection: string[]
   selectedNode: NodeSelection | null
   tool: Tool
@@ -70,6 +75,7 @@ export interface EditorState {
   knife: KnifeSettings
   gridPattern: GridPatternSettings
   radialPattern: RadialPatternSettings
+  patternTab: 'grid' | 'radial'
   toasts: Toast[]
   textEditId: string | null
   status: string
@@ -95,12 +101,15 @@ function loadAutosave(): DocumentModel | null {
 }
 
 function initialState(): EditorState {
-  const restored = loadAutosave()
-  const doc = restored ?? createShowcaseDocument()
-  const hero = doc.layers[0]?.shapes.find(s => s.name === 'Radial Field') ?? doc.layers.flatMap(l => l.shapes)[0]
+  const prefs = loadWorkspace(typeof localStorage === 'undefined' ? undefined : localStorage)
+  const doc = createBlankDocument()
   return {
     doc,
-    selection: hero ? [hero.id] : [],
+    workflow: doc.production.preview ? 'preview' : 'design',
+    productionTab: doc.production.preview ? 'sim' : 'layers',
+    theme: prefs.theme,
+    compactView: false,
+    selection: [],
     selectedNode: null,
     tool: 'select',
     hover: null,
@@ -109,17 +118,18 @@ function initialState(): EditorState {
     draft: null,
     view: { zoom: 2.1, panX: 80, panY: 60, width: 1200, height: 800, ready: false },
     pointer: null,
-    rightTab: 'design',
-    leftOpen: true,
-    rightOpen: true,
+    rightTab: doc.production.preview ? 'production' : 'design',
+    leftOpen: prefs.leftOpen,
+    rightOpen: prefs.rightOpen,
     showRulers: true,
     showSetups: true,
     knife: { mode: 'line', autoClose: true, span: 'normal', width: 4, cutAll: true },
     gridPattern: { columns: 4, rows: 3, mode: 'spacing', dx: 6, dy: 6, directionX: 1, directionY: 1 },
     radialPattern: { copies: 12, pivotX: 210, pivotY: 148, radius: 74, startAngle: 0, span: 360, rotateWithShape: true },
+    patternTab: 'grid',
     toasts: [],
     textEditId: null,
-    status: restored ? 'Session restored · autosaved locally' : hero ? 'Radial Field · 60 nodes' : 'Ready',
+    status: 'Ready',
     polygonSides: 6,
     penType: 'smooth',
     scaleStroke: true,
@@ -139,6 +149,7 @@ export class EditorStore {
   private undoStack: DocumentModel[] = []
   private redoStack: DocumentModel[] = []
   private clipboard: Shape[] = []
+  private radialSourceIds = ''
   private toastTimers: number[] = []
 
   getState = (): EditorState => this.state
@@ -177,7 +188,7 @@ export class EditorStore {
     this.redoStack.push(structuredClone(this.state.doc))
     this.state = {
       ...this.state,
-      doc: prev,
+      doc: {...prev,production:{...prev.production,preview:this.state.workflow==='preview'}},
       selection: this.state.selection.filter(id => !!getShape(prev, id)),
       selectedNode: null, draft: null, snapHit: null, snapRays: [],
       status: 'Undo',
@@ -190,7 +201,7 @@ export class EditorStore {
     this.undoStack.push(structuredClone(this.state.doc))
     this.state = {
       ...this.state,
-      doc: next,
+      doc: {...next,production:{...next.production,preview:this.state.workflow==='preview'}},
       selection: this.state.selection.filter(id => !!getShape(next, id)),
       selectedNode: null, draft: null, snapHit: null, snapRays: [],
       status: 'Redo',
@@ -256,6 +267,7 @@ export class EditorStore {
 
   /* ── Selection & tooling ──────────────────────────────────── */
   setTool(tool: Tool): void {
+    if (this.state.workflow !== 'design') this.setWorkflow('design')
     const enteringNode = tool === 'node'
     this.patch({
       tool,
@@ -265,6 +277,13 @@ export class EditorStore {
       snapRays: [],
       status: tool === 'node' ? 'Shape tool — select a curve to edit nodes' : `Tool · ${tool}`,
     })
+  }
+  fitArtwork(scope: 'selection' | 'all'): void {
+    const shapes = scope === 'selection' ? this.getSelectedShapes() : this.state.doc.layers.filter(l=>l.visible).flatMap(l=>l.shapes.filter(s=>!s.hidden))
+    if (!shapes.length) { this.fitPage(); return }
+    const b = selectionBounds(shapes), v = this.state.view
+    const zoom = clamp(Math.min(Math.max(80,v.width-96)/Math.max(.1,b.w),Math.max(80,v.height-96)/Math.max(.1,b.h)),MIN_ZOOM,MAX_ZOOM)
+    this.patch({ view: { ...v, zoom, panX: v.width/2-(b.x+b.w/2)*zoom, panY: v.height/2-(b.y+b.h/2)*zoom } })
   }
   setSelection(ids: string[], additive = false, toggle = false): void {
     let next: string[]
@@ -296,11 +315,49 @@ export class EditorStore {
   setSnap(snapHit: SnapHit | null, snapRays: SnapRay[] = []): void { this.patch({ snapHit, snapRays }) }
   setPointer(pointer: Pt | null): void { this.patch({ pointer }) }
   setDraft(draft: Draft): void { this.patch({ draft }) }
-  setRightTab(tab: PanelTab): void { this.patch({ rightTab: tab }) }
-  toggleLeft(): void { this.patch({ leftOpen: !this.state.leftOpen }) }
-  toggleRight(): void { this.patch({ rightOpen: !this.state.rightOpen }) }
-  setLeftOpen(open: boolean): void { this.patch({ leftOpen: open }) }
-  setRightOpen(open: boolean): void { this.patch({ rightOpen: open }) }
+  setWorkflow(workflow: Workflow): void {
+    // Preview is an existing document preference; presentation transitions do not enter undo history.
+    const preview = workflow === 'preview'
+    const doc = this.state.doc.production.preview === preview ? this.state.doc : { ...this.state.doc, production: { ...this.state.doc.production, preview } }
+    this.patch({ workflow, doc, rightOpen: true, leftOpen: this.state.compactView ? false : this.state.leftOpen, rightTab: workflow === 'design' ? 'design' : 'production',
+      productionTab: workflow === 'design' ? this.state.productionTab : workflow === 'laser' ? 'layers' : 'sim',
+      sim: { ...this.state.sim, playing: false }, draft: null, snapHit: null, snapRays: [] })
+  }
+  setProductionTab(productionTab: ProductionTab): void {
+    this.patch({ productionTab, rightTab: 'production', rightOpen: true, leftOpen:this.state.compactView?false:this.state.leftOpen })
+  }
+  setRightTab(tab: PanelTab): void {
+    if (tab === 'production') { this.setWorkflow('laser'); return }
+    if (this.state.workflow !== 'design') this.setWorkflow('design')
+    this.patch({ rightTab: tab, rightOpen: true, leftOpen: this.state.compactView ? false : this.state.leftOpen })
+  }
+  openPatterns(patternTab: 'grid' | 'radial'): void {
+    this.setRightTab('patterns')
+    if(patternTab==='radial') {
+      const shapes=this.getSelectedShapes(), signature=shapes.map(s=>s.id).sort().join('|')
+      if(shapes.length && signature!==this.radialSourceIds) {
+        const b=selectionBounds(shapes),center=boundsCenter(b),radius=Math.max(b.w,b.h,1)*1.5
+        this.radialSourceIds=signature
+        this.patch({radialPattern:{...this.state.radialPattern,pivotX:center.x-radius,pivotY:center.y,radius:0,startAngle:0}})
+      }
+    }
+    this.patch({ patternTab })
+  }
+  private saveWorkspace(): void {
+    const {theme} = this.state
+    const {leftOpen,rightOpen} = this.state.compactView ? loadWorkspace(typeof localStorage==='undefined'?undefined:localStorage) : this.state
+    try { localStorage.setItem(WORKSPACE_KEY, JSON.stringify({ theme,leftOpen,rightOpen })) } catch { /* optional view preferences; document save status is independent */ }
+  }
+  setCompactView(compactView: boolean): void {
+    if (compactView === this.state.compactView) return
+    const prefs=loadWorkspace(typeof localStorage==='undefined'?undefined:localStorage)
+    this.patch({compactView,leftOpen:compactView?false:prefs.leftOpen,rightOpen:compactView?false:prefs.rightOpen})
+  }
+  setTheme(theme: Theme): void { this.patch({ theme }); this.saveWorkspace() }
+  toggleLeft(): void { this.setLeftOpen(!this.state.leftOpen) }
+  toggleRight(): void { this.setRightOpen(!this.state.rightOpen) }
+  setLeftOpen(leftOpen: boolean): void { this.patch({ leftOpen, rightOpen: this.state.compactView && leftOpen ? false : this.state.rightOpen }); if(!this.state.compactView)this.saveWorkspace() }
+  setRightOpen(rightOpen: boolean): void { this.patch({ rightOpen, leftOpen: this.state.compactView && rightOpen ? false : this.state.leftOpen }); if(!this.state.compactView)this.saveWorkspace() }
   setShowRulers(v: boolean): void { this.patch({ showRulers: v }) }
   setStatus(status: string): void { this.patch({ status }) }
   setPenType(t: 'corner' | 'smooth'): void { this.patch({ penType: t }) }
@@ -738,6 +795,16 @@ export class EditorStore {
     })))
   }
 
+  makeSelectionCircle(): void {
+    const shapes = this.getSelectedShapes()
+    if (shapes.length !== 1 || shapes[0].kind !== 'ellipse') return
+    const shape = shapes[0], b = shapeBounds(shape), center = boundsCenter(b)
+    if (!Number.isFinite(b.w) || b.w < 1e-6) return
+    this.pushHistory('Make circle')
+    this.replaceShapes([{ ...shape, subpaths: ellipseSubpaths(center.x, center.y, b.w / 2, b.w / 2) }])
+    this.setStatus('Circle created · diameter uses the current width')
+  }
+
   /* ── Node editing ─────────────────────────────────────────── */
   private nodeContext(sel: NodeSelection): { shape: Shape; sub: Subpath; node: PathNode } | null {
     const shape = getShape(this.state.doc, sel.shapeId)
@@ -923,6 +990,7 @@ export class EditorStore {
     this.undoStack = []
     this.redoStack = []
     this.state.doc = doc
+    this.state.workflow = 'design'; this.state.rightTab = 'design'
     this.state.selection = []
     this.state.selectedNode = null; this.state.draft = null; this.state.hover = null; this.state.textEditId = null
     this.state.sim = { playing: false, progress: 0, headPos: null, laserOn: false, speed: 1 }
@@ -1003,13 +1071,38 @@ export class EditorStore {
     this.docChanged()
   }
   setKnife(patch: Partial<KnifeSettings>): void {
-    this.patch({ knife: { ...this.state.knife, ...patch } })
+    this.patch({ knife: { ...this.state.knife, ...patch }, ...(patch.mode && patch.mode!==this.state.knife.mode ? {draft:null,snapHit:null}: {}) })
+  }
+  beginKnifeLine(point: Pt): Pt {
+    const draft=this.state.draft
+    const start=draft?.type==='knife' && draft.mode==='line' && !draft.drawing ? draft.anchors[0] : point
+    this.patch({draft:{type:'knife',mode:'line',anchors:start===point?[point]:[start,point],cursor:point,drawing:true}})
+    return start
+  }
+  finishKnifeLine(point: Pt): number {
+    const draft=this.state.draft
+    if(draft?.type!=='knife'||draft.mode!=='line')return 0
+    const start=draft.anchors[0]
+    if(dist(start,point)*this.state.view.zoom<2) {
+      this.patch({draft:{...draft,anchors:[start],cursor:point,drawing:false},status:'Knife · click the end point, or drag across two boundaries. Esc cancels.'})
+      return 0
+    }
+    this.patch({draft:{...draft,anchors:[start,point],cursor:point,drawing:false}})
+    return this.commitKnifeDraft()
+  }
+  commitKnifeDraft(): number {
+    const draft=this.state.draft
+    if(draft?.type!=='knife'||draft.anchors.length<2)return 0
+    return this.commitCut(draft.mode==='bezier'?smoothCutPath(draft.anchors):draft.anchors)
   }
   setGridPattern(patch: Partial<GridPatternSettings>): void {
     this.patch({ gridPattern: { ...this.state.gridPattern, ...patch } })
   }
   setRadialPattern(patch: Partial<RadialPatternSettings>): void {
-    this.patch({ radialPattern: { ...this.state.radialPattern, ...patch } })
+    if(Object.values(patch).some(v=>typeof v==='number'&&!Number.isFinite(v))){this.toast('Enter finite circular-pattern settings','warn');return}
+    const next={...this.state.radialPattern,...patch}
+    next.copies=clamp(Math.round(next.copies),1,72);next.radius=Math.max(0,next.radius);next.span=clamp(next.span,-360,360)
+    this.patch({radialPattern:next})
   }
   useSelectionAsRadialAnchor(): void {
     const shapes = this.getSelectedShapes()
@@ -1028,11 +1121,7 @@ export class EditorStore {
     this.docChanged()
   }
   setProductionPreview(preview: boolean): void {
-    this.state.doc.production = { ...this.state.doc.production, preview }
-    if (!preview && this.state.sim.playing) {
-      this.state.sim = { ...this.state.sim, playing: false }
-    }
-    this.docChanged()
+    this.setWorkflow(preview ? 'preview' : 'design')
   }
   setSimulation(patch: Partial<LaserSimulationState>): void {
     this.patch({ sim: { ...this.state.sim, ...patch } })
@@ -1202,13 +1291,13 @@ export class EditorStore {
     const shapes = settings.cutAll
       ? allShapes(this.state.doc).filter(s => !s.locked)
       : this.getSelectedShapes()
-    if (!shapes.length) { this.toast('Nothing to cut — select an object first', 'warn'); return 0 }
+    if (!shapes.length) { const message='Knife: select editable artwork or enable All under path.'; this.toast(message,'warn'); this.patch({draft:null,status:message}); return 0 }
     let cutResult: ReturnType<typeof cutShapes>
-    try { cutResult = cutShapes(shapes, points, settings) } catch (err) { this.toast(err instanceof Error ? err.message : 'Knife operation failed', 'warn'); this.patch({ draft: null }); return 0 }
+    try { cutResult = cutShapes(shapes, points, settings) } catch (err) { const message=err instanceof Error ? err.message : 'Knife operation failed'; this.toast(message,'warn',7000); this.patch({ draft:null,status:message }); return 0 }
     const { result, totalCuts } = cutResult
     if (!result.length || totalCuts === 0) {
-      this.toast('The cut path did not cross any objects', 'warn')
-      this.patch({ draft: null, snapHit: null, snapRays: [] })
+      this.toast('Knife: cross both boundaries of a closed shape. Convert editable text to curves first.', 'warn',6000)
+      this.patch({ draft: null, snapHit: null, snapRays: [],status:'Knife: no complete crossing. Cross two edges of a closed shape.' })
       return 0
     }
     this.pushHistory('Knife cut')
@@ -1246,12 +1335,13 @@ export class EditorStore {
     if (!shapes.length) { this.toast('Select an object to array', 'warn'); return 0 }
     this.pushHistory('Step and Repeat')
     let added = 0
+    const patternBounds = selectionBounds(shapes)
     const created: string[] = []
     for (const shape of shapes) {
       const layer = getLayerOfShape(this.state.doc, shape.id)
       if (!layer) continue
-      const copies = gridPattern(shape, this.state.gridPattern)
-      layer.shapes.push(...copies.map(s => applyLayerColor(s, layer)))
+      const copies = gridPattern(shape, this.state.gridPattern, patternBounds)
+      layer.shapes.push(...copies)
       created.push(...copies.map(c => c.id))
       added += copies.length
     }
@@ -1270,18 +1360,19 @@ export class EditorStore {
     if (!shapes.length) { this.toast('Select an object to rotate', 'warn'); return 0 }
     this.pushHistory('Radial array')
     let added = 0
+    const patternBounds = selectionBounds(shapes)
     const created: string[] = []
     for (const shape of shapes) {
       const layer = getLayerOfShape(this.state.doc, shape.id)
       if (!layer) continue
-      const copies = radialPattern(shape, this.state.radialPattern)
-      layer.shapes.push(...copies.map(s => applyLayerColor(s, layer)))
+      const copies = radialPattern(shape, this.state.radialPattern, patternBounds)
+      layer.shapes.push(...copies)
       created.push(...copies.map(c => c.id))
       added += copies.length
     }
     this.state = {
       ...this.state,
-      selection: [...this.state.selection, ...created],
+      selection: shapes.map(s=>s.id),
       doc: { ...this.state.doc },
       status: `Radial array · +${added} copies`,
     }
@@ -1310,17 +1401,25 @@ export class EditorStore {
     this.pushHistory('Reset')
     const doc = createShowcaseDocument()
     this.state = {
-      ...this.state, doc, selection: [], selectedNode: null, draft: null,
+      ...this.state, doc, workflow:doc.production.preview?'preview':'design', rightTab:doc.production.preview?'production':'design', productionTab:doc.production.preview?'sim':'layers', selection: [], selectedNode: null, draft: null,
       toasts: [], status: 'Showcase restored',
       radialPattern: { ...this.state.radialPattern, pivotX: 210, pivotY: 148, radius: 74 },
     }
     this.emit()
     this.toast('Showcase artwork restored', 'success')
   }
+  restoreAutosave(): boolean {
+    const doc = loadAutosave()
+    if (!doc) { this.toast('No valid local autosave is available', 'warn'); return false }
+    this.loadDocument(doc)
+    this.setWorkflow('design')
+    this.toast('Last local autosave restored', 'success')
+    return true
+  }
   loadDocument(doc: DocumentModel): void {
     const normalized = normalizeDocument(doc)
     this.pushHistory('Open')
-    this.state = { ...this.state, doc: normalized, selection: [], selectedNode: null, draft: null, textEditId: null, hover: null, sim: { ...this.state.sim, playing: false, progress: 0, headPos: null, laserOn: false }, status: 'Document loaded' }
+    this.state = { ...this.state, doc: normalized, workflow: normalized.production.preview ? 'preview' : 'design', productionTab: normalized.production.preview ? 'sim' : 'layers', rightTab: normalized.production.preview ? 'production' : 'design', selection: [], selectedNode: null, draft: null, textEditId: null, hover: null, sim: { ...this.state.sim, playing: false, progress: 0, headPos: null, laserOn: false }, status: 'Document loaded' }
     this.emit(); this.fitPage()
   }
   createTextAt(p: Pt): Shape {

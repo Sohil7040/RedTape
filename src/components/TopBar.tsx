@@ -1,88 +1,53 @@
 import { useEffect, useRef, useState } from 'react'
 import {
   ChevronDown, Download, FileImage, FileJson, FolderOpen, Grid3X3, Magnet, Minus, Redo2, RotateCcw,
-  Ruler, Save, Settings2, Sparkles, Undo2, Plus, FileCode2, Info, Upload, PanelLeft, PanelRight, FilePlus2,
+  Moon, Sun, Search, ArrowRight, Ruler, Save, Settings2, Sparkles, Undo2, Plus, FileCode2, Info, Upload, PanelLeft, PanelRight, FilePlus2,
 } from 'lucide-react'
 import { EditorState, EditorStore } from '../core/store'
 import { exportPNG, exportProject, exportSVG } from '../core/exporters'
+import { WORKFLOWS } from '../core/workspace'
 import { IconButton } from './ui'
 
-interface Props { state: EditorState; store: EditorStore; onAbout: () => void; onNewDoc: () => void }
+interface Props { state: EditorState; store: EditorStore; onAbout: () => void; onNewDoc: () => void; saveStatus: string; saveError?: string; onCommands: () => void; onShortcuts: () => void; onExport: () => void }
 type MenuName = 'file' | 'edit' | 'view' | null
 
-export default function TopBar({ state, store, onAbout, onNewDoc }: Props) {
+export default function TopBar({ state, store, onAbout, onNewDoc, saveStatus, saveError, onCommands, onShortcuts, onExport }: Props) {
   const [menu, setMenu] = useState<MenuName>(null)
-  const [zoomOpen, setZoomOpen] = useState(false)
-  const [exportOpen, setExportOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
   const fileRef = useRef<HTMLInputElement>(null)
-  const zoomRef = useRef<HTMLDivElement>(null)
-  const exportRef = useRef<HTMLDivElement>(null)
-
+  const doc = state.doc, snap = doc.snap.enabled
   useEffect(() => {
-    const close = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenu(null)
-      if (zoomRef.current && !zoomRef.current.contains(e.target as Node)) setZoomOpen(false)
-      if (exportRef.current && !exportRef.current.contains(e.target as Node)) setExportOpen(false)
-    }
-    window.addEventListener('mousedown', close)
-    return () => window.removeEventListener('mousedown', close)
+    const close = (e: MouseEvent) => { if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenu(null) }
+    const escape = (e: KeyboardEvent) => { if(e.key === 'Escape') setMenu(null) }
+    window.addEventListener('mousedown', close); window.addEventListener('keydown', escape)
+    return () => { window.removeEventListener('mousedown', close); window.removeEventListener('keydown', escape) }
   }, [])
-
-  const zoomPct = Math.round((state.view.zoom / (96 / 25.4)) * 100)
-  const doc = state.doc
-  const snap = doc.snap.enabled
-
   const savePNG = async () => {
-    setMenu(null); setExportOpen(false)
+    setMenu(null)
     try { await exportPNG(state); store.toast('PNG exported at 300 DPI', 'success') }
-    catch (err) { store.toast(err instanceof Error ? err.message : 'PNG export failed', 'warn', 6500) }
+    catch(error) { store.toast(error instanceof Error ? error.message : 'PNG export failed', 'warn') }
   }
   const openProject = () => fileRef.current?.click()
-  const onFile = async (file: File | undefined) => {
+  const onFile = async (file?: File) => {
     if (!file) return
     try {
-      const raw = await file.text()
-      const parsed = JSON.parse(raw)
-      const loaded = parsed.doc ?? parsed
-      if (!loaded?.layers || !loaded?.page) throw new Error('Invalid document')
-      store.loadDocument(loaded)
-      store.toast('Project opened successfully', 'success')
-      setMenu(null)
-    } catch (err) {
-      store.toast(err instanceof Error ? err.message : 'Could not open project file', 'warn', 6000)
-    }
+      const parsed = JSON.parse(await file.text()), loaded = parsed.doc ?? parsed
+      if (!loaded?.layers || !loaded?.page) throw new Error('Invalid Corelith project')
+      store.loadDocument(loaded); store.setWorkflow('design'); setMenu(null); store.toast('Project opened', 'success')
+    } catch(error) { store.toast(error instanceof Error ? error.message : 'Could not open project', 'warn') }
   }
-
+  const next = () => {
+    if (state.workflow === 'design') store.setWorkflow('laser')
+    else if (state.workflow === 'laser') store.setWorkflow('preview')
+    else { store.setProductionTab('machine'); requestAnimationFrame(() => document.querySelector('.right-body')?.scrollTo({ top:0 })) }
+  }
   return (
     <header className="topbar">
-      <div className="brand">
-        <div className="brand-mark" aria-hidden="true">
-          <span className="brand-orbit" />
-          <span className="brand-core" />
-          <span className="brand-ray r1" /><span className="brand-ray r2" /><span className="brand-ray r3" />
-        </div>
-        <div className="brand-copy">
-          <strong>Corelith<span className="brand-dot">.</span></strong>
-          <span>VECTOR LAB</span>
-        </div>
-      </div>
-
+      <div className="brand"><span className="brand-symbol" aria-hidden="true">C</span><strong>Corelith</strong></div>
       <div className="doc-head">
-        <div className="doc-title-row">
-          <input
-            className="doc-name-input"
-            value={doc.name}
-            onChange={e => store.setDocName(e.target.value)}
-            spellCheck={false}
-            aria-label="Document name"
-          />
-          <span className="doc-badge">{doc.page.unit.toUpperCase()}</span>
-          <span className="saved-chip"><i />LOCAL</span>
-        </div>
-        <span className="doc-meta">{doc.page.width} × {doc.page.height} mm · {doc.layers.reduce((n, l) => n + l.shapes.length, 0)} objects · {doc.layers.length} layers</span>
+        <input aria-label="Document name" className="doc-name-input" value={doc.name} onChange={e => store.setDocName(e.target.value)} />
+        <span className={`save-status ${saveError ? 'failed' : ''}`} role="status" title={saveError ?? 'Autosave in this browser profile; export a project for a portable backup'}>{saveStatus}</span>
       </div>
-
       <nav className="menubar" ref={menuRef}>
         <button type="button" className={menu === 'file' ? 'on' : ''} onClick={() => setMenu(menu === 'file' ? null : 'file')}>File</button>
         <button type="button" className={menu === 'edit' ? 'on' : ''} onClick={() => setMenu(menu === 'edit' ? null : 'edit')}>Edit</button>
@@ -96,8 +61,9 @@ export default function TopBar({ state, store, onAbout, onNewDoc }: Props) {
             <div className="menu-sep" />
             <button onClick={() => { store.resetDemo(); setMenu(null) }}><RotateCcw size={14} /><span>Restore showcase demo</span></button>
             <div className="menu-sep" />
-            <button onClick={savePNG}><FileImage size={14} /><span>Export PNG · 300 DPI</span><kbd>PNG</kbd></button>
-            <button onClick={() => { exportSVG(state); setMenu(null) }}><FileCode2 size={14} /><span>Export SVG</span></button>
+            <button onClick={()=>{setMenu(null);onExport()}}><Download size={14}/><span>Export…</span><kbd>ART / JOB</kbd></button>
+            <button onClick={() => { store.restoreAutosave(); setMenu(null) }}><RotateCcw size={14} /><span>Restore last autosave</span></button>
+            <button onClick={onShortcuts}><span>Keyboard shortcuts</span><kbd>?</kbd></button>
             <div className="menu-sep" />
             <button onClick={() => { onAbout(); setMenu(null) }}><Info size={14} /><span>About Corelith</span></button>
             <input ref={fileRef} type="file" accept="application/json,.json" hidden onChange={e => { onFile(e.target.files?.[0]); e.currentTarget.value = '' }} />
@@ -117,7 +83,9 @@ export default function TopBar({ state, store, onAbout, onNewDoc }: Props) {
         )}
         {menu === 'view' && (
           <div className="menu-pop">
-            <button onClick={() => store.fitPage()}><span>Fit page</span><kbd>0</kbd></button>
+            <button onClick={() => store.fitPage()}><span>Fit Sheet</span><kbd>0</kbd></button>
+            <button onClick={() => store.fitArtwork('selection')}><span>Fit Selection</span></button>
+            <button onClick={() => store.fitArtwork('all')}><span>Fit All Artwork</span></button>
             <button onClick={() => store.zoomActual()}><span>Actual size</span><kbd>1</kbd></button>
             <button onClick={() => store.toggleLeft()}><span>{state.leftOpen ? 'Hide' : 'Show'} object panel</span></button>
             <button onClick={() => store.toggleRight()}><span>{state.rightOpen ? 'Hide' : 'Show'} inspector</span></button>
@@ -129,74 +97,18 @@ export default function TopBar({ state, store, onAbout, onNewDoc }: Props) {
         )}
       </nav>
 
-      <div className="topbar-spacer" />
 
+      <nav className="workflow-nav" aria-label="Workspace">
+        {WORKFLOWS.map((w,i) => <button key={w.id} aria-current={state.workflow === w.id ? 'page' : undefined} onClick={() => store.setWorkflow(w.id)}><span>{i+1}</span>{w.label}</button>)}
+      </nav>
       <div className="top-actions">
-        <button className={`magnet-btn ${snap ? 'on' : ''}`} onClick={() => store.toggleSnap()} title="Toggle smart snapping (N)">
-          <Magnet size={15} />
-          <span>{snap ? 'SNAP ON' : 'SNAP OFF'}</span>
-          <i />
-        </button>
-        <div className="btn-divider" />
         <IconButton icon={Undo2} label="Undo (Ctrl+Z)" disabled={!store.canUndo} onClick={() => store.undo()} />
         <IconButton icon={Redo2} label="Redo (Ctrl+Shift+Z)" disabled={!store.canRedo} onClick={() => store.redo()} />
-        <div className="btn-divider" />
-        <div className="zoom-group" ref={zoomRef}>
-          <button type="button" className="zoom-step" onClick={() => store.zoomBy(1 / 1.25)} aria-label="Zoom out"><Minus size={13} /></button>
-          <button type="button" className="zoom-value" onClick={() => setZoomOpen(o => !o)}>
-            {zoomPct}% <ChevronDown size={11} />
-          </button>
-          <button type="button" className="zoom-step" onClick={() => store.zoomBy(1.25)} aria-label="Zoom in"><Plus size={13} /></button>
-          {zoomOpen && (
-            <div className="menu-pop zoom-pop">
-              {[25, 50, 100, 200, 400].map(z => (
-                <button key={z} onClick={() => { store.setZoomAt((z / 100) * (96 / 25.4), { x: state.view.width / 2, y: state.view.height / 2 }); setZoomOpen(false) }} className={zoomPct === z ? 'selected' : ''}>{z}%</button>
-              ))}
-              <div className="menu-sep" />
-              <button onClick={() => { store.fitPage(); setZoomOpen(false) }}>Fit page <kbd>0</kbd></button>
-              <button onClick={() => { store.zoomActual(); setZoomOpen(false) }}>Actual size <kbd>1</kbd></button>
-            </div>
-          )}
-        </div>
-        <div className="btn-divider" />
-        <div className="dock-toggles-group">
-          <button
-            type="button"
-            className={`top-dock-btn ${state.leftOpen ? 'on' : ''}`}
-            onClick={() => store.toggleLeft()}
-            title={state.leftOpen ? 'Hide Artwork / Layers Panel ([)' : 'Show Artwork / Layers Panel ([)'}
-          >
-            <PanelLeft size={14} />
-            <span>Layers</span>
-          </button>
-          <button
-            type="button"
-            className={`top-dock-btn ${state.rightOpen ? 'on' : ''}`}
-            onClick={() => store.toggleRight()}
-            title={state.rightOpen ? 'Hide Inspector / Laser CAM (])' : 'Show Inspector / Laser CAM (])'}
-          >
-            <PanelRight size={14} />
-            <span>Inspector</span>
-          </button>
-        </div>
-        <div className="btn-divider" />
-        <div className="export-wrap" ref={exportRef}>
-          <button className="export-btn" onClick={() => setExportOpen(o => !o)}>
-            <Download size={14} />
-            <span>Export</span>
-            <ChevronDown size={11} className={exportOpen ? 'flip' : ''} />
-          </button>
-          {exportOpen && (
-            <div className="menu-pop export-pop">
-              <div className="export-pop-head">EXPORT ARTWORK</div>
-              <button onClick={savePNG}><FileImage size={14} /><span>PNG · 300 DPI</span><kbd>RASTER</kbd></button>
-              <button onClick={() => { exportSVG(state); setExportOpen(false); store.toast('SVG vector master exported', 'success') }}><FileCode2 size={14} /><span>SVG · vector</span><kbd>VECTOR</kbd></button>
-              <div className="menu-sep" />
-              <button onClick={() => { exportProject(state.doc); setExportOpen(false); store.toast('Project saved as .corelith', 'success') }}><Save size={14} /><span>Project · .corelith</span><kbd>JSON</kbd></button>
-            </div>
-          )}
-        </div>
-        <button className="settings-btn" onClick={() => store.setRightTab('design')} title="Inspector"><Settings2 size={15} /></button>
+        <IconButton icon={Search} label="Search commands (Ctrl+K)" onClick={onCommands} />
+        <IconButton icon={state.theme === 'light' ? Moon : Sun} label={`Use ${state.theme === 'light' ? 'dark' : 'light'} theme`} onClick={() => store.setTheme(state.theme === 'light' ? 'dark' : 'light')} />
+        <IconButton icon={PanelLeft} label="Toggle Objects panel ([)" active={state.leftOpen} onClick={() => store.toggleLeft()} />
+        <IconButton icon={PanelRight} label="Toggle Inspector (])" active={state.rightOpen} onClick={() => store.toggleRight()} />
+        <button className="primary-action" title={WORKFLOWS.find(w=>w.id===state.workflow)?.action} aria-label={WORKFLOWS.find(w=>w.id===state.workflow)?.action} onClick={next}><span>{WORKFLOWS.find(w=>w.id===state.workflow)?.action}</span><ArrowRight size={14} /></button>
       </div>
     </header>
   )

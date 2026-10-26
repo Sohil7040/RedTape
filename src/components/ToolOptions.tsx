@@ -1,6 +1,6 @@
 import {
   Check, Magnet, MousePointer2, PenTool, Scissors, Spline, Square, Circle, Hexagon,
-  Slash, Type, Hand, ZoomIn, Trash2, Copy,
+  Slash, Type, Hand, ZoomIn, Trash2, Copy, Grid2X2, Orbit,
 } from 'lucide-react'
 import { EditorState, EditorStore } from '../core/store'
 import { Segmented, Switch } from './ui'
@@ -35,7 +35,12 @@ export default function ToolOptions({ state, store }: Props) {
             <button onClick={() => store.deleteSelection()} disabled={!primary} title="Delete" className="danger"><Trash2 size={14} /></button>
             <button onClick={() => store.toggleSnap()} className={state.doc.snap.enabled ? 'on' : ''} title="Toggle snap"><Magnet size={14} /></button>
           </div>
-          {primary && <div className="to-pill">{primary.kind.toUpperCase()} · {primary.name}</div>}
+          <span className="to-divider" />
+          <div className="to-buttons">
+            <button onClick={() => store.openPatterns('grid')} title="Repeat selected objects in rows and columns"><Grid2X2 size={14} />Rectangular pattern</button>
+            <button onClick={() => store.openPatterns('radial')} title="Repeat selected objects around a pivot"><Orbit size={14} />Circular pattern</button>
+            <button onClick={() => {store.setRightOpen(true);store.setRightTab('snap')}}><Magnet size={14} />Snapping</button>
+          </div>
         </>
       )}
       {tool === 'node' && (
@@ -72,6 +77,7 @@ export default function ToolOptions({ state, store }: Props) {
       )}
       {tool === 'knife' && (
         <>
+          <div className="to-value knife-instructions">{state.knife.mode==='line'?'Click start + end, or drag':state.knife.mode==='bezier'?'Click points, then Cut / Enter':'Drag across the shape'}</div>
           <div className="to-cluster">
             <span className="to-label">Cut mode</span>
             <Segmented compact value={state.knife.mode} onChange={v => store.setKnife({ mode: v })} options={[{ value: 'line', label: '2-point' }, { value: 'freehand', label: 'Freehand' }, { value: 'bezier', label: 'Bézier' }]} />
@@ -83,14 +89,14 @@ export default function ToolOptions({ state, store }: Props) {
           </div>
           <div className="to-num">
             <span className="to-label">Width</span>
-            <input type="number" value={state.knife.width} min={0} step={0.5} onChange={e => store.setKnife({ width: Math.max(0, Number(e.target.value)) })} />
+            <input aria-label="Knife gap or overlap width" type="number" value={state.knife.width} min={0} step={0.5} onChange={e => {const n=Number(e.target.value);if(Number.isFinite(n))store.setKnife({ width: Math.max(0,n) })}} />
             <span>mm</span>
           </div>
-          <div className="to-switch"><Switch checked={state.knife.autoClose} onChange={v => store.setKnife({ autoClose: v })} /><span>Auto-close</span></div>
-          <div className="to-switch"><Switch checked={state.knife.cutAll} onChange={v => store.setKnife({ cutAll: v })} /><span>All under path</span></div>
+          <div className="to-switch"><Switch description="Knife auto-close" checked={state.knife.autoClose} onChange={v => store.setKnife({ autoClose: v })} /><span>Auto-close</span></div>
+          <div className="to-switch"><Switch description="Cut all shapes under path" checked={state.knife.cutAll} onChange={v => store.setKnife({ cutAll: v })} /><span>All under path</span></div>
           <span className="to-divider" />
           <div className="to-buttons">
-            <button className="primary" onClick={fireEnter} disabled={!state.draft || state.draft.type !== 'knife'}><Scissors size={14} />Cut</button>
+            <button className="primary" onClick={() => store.commitKnifeDraft()} disabled={!state.draft || state.draft.type !== 'knife' || state.draft.anchors.length<2}><Scissors size={14} />Cut</button>
           </div>
         </>
       )}
@@ -136,7 +142,7 @@ function toolName(tool: string): string {
 function toolHint(tool: string, state: EditorState): string {
   if (tool === 'select') return `${Math.round((state.view.zoom / (96 / 25.4)) * 100)}% · smart snapping ${state.doc.snap.enabled ? 'on' : 'off'}`
   if (tool === 'node') return state.selection.length ? 'F10 · edit Bézier topology' : 'Select a curve first'
-  if (tool === 'knife') return state.knife.autoClose ? 'Auto-close topology' : 'Open split'
+  if (tool === 'knife') return state.knife.autoClose ? 'Split shapes into closed pieces' : 'Split into open paths'
   if (tool === 'pen') return 'Bézier path authoring'
   return 'Precision drawing tool'
 }

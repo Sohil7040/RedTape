@@ -4,6 +4,8 @@
    intersection and snapping primitives. Units are millimetres.
    ───────────────────────────────────────────────────────────── */
 
+import { corelCubicCoordinate, rdworksEllipseControlPoints } from './nativeCurveMath'
+
 export interface Pt { x: number; y: number }
 export type NodeType = 'cusp' | 'smooth' | 'symmetric'
 
@@ -123,14 +125,9 @@ export function segments(sub: Subpath): SegmentRef[] {
 }
 
 export function cubicPoint(c: Cubic, t: number): Pt {
-  const mt = 1 - t
-  const a = mt * mt * mt
-  const b = 3 * mt * mt * t
-  const d = 3 * mt * t * t
-  const e = t * t * t
   return {
-    x: a * c.p0.x + b * c.p1.x + d * c.p2.x + e * c.p3.x,
-    y: a * c.p0.y + b * c.p1.y + d * c.p2.y + e * c.p3.y,
+    x: corelCubicCoordinate(c.p0.x,c.p1.x,c.p2.x,c.p3.x,t),
+    y: corelCubicCoordinate(c.p0.y,c.p1.y,c.p2.y,c.p3.y,t),
   }
 }
 
@@ -442,13 +439,11 @@ export function rectSubpaths(x: number, y: number, w: number, h: number): Subpat
 }
 
 export function ellipseSubpaths(cx: number, cy: number, rx: number, ry: number): Subpath[] {
-  const ox = rx * KAPPA, oy = ry * KAPPA
-  const nodes: PathNode[] = [
-    { id: uid('n'), x: cx, y: cy - ry, in: { x: cx - ox, y: cy - ry }, out: { x: cx + ox, y: cy - ry }, type: 'smooth' },
-    { id: uid('n'), x: cx + rx, y: cy, in: { x: cx + rx, y: cy - oy }, out: { x: cx + rx, y: cy + oy }, type: 'smooth' },
-    { id: uid('n'), x: cx, y: cy + ry, in: { x: cx + ox, y: cy + ry }, out: { x: cx - ox, y: cy + ry }, type: 'smooth' },
-    { id: uid('n'), x: cx - rx, y: cy, in: { x: cx - rx, y: cy + oy }, out: { x: cx - rx, y: cy - oy }, type: 'smooth' },
-  ]
+  const points=rdworksEllipseControlPoints(cx-rx,cy-ry,cx+rx,cy+ry)
+  // Adapt the recovered sequence to the editor's existing top-first winding.
+  const nodes: PathNode[] = [[9,10,8],[6,7,5],[3,4,2],[0,1,11]].map(([anchor,input,output])=>({
+    id:uid('n'),...points[anchor],in:{...points[input]},out:{...points[output]},type:'smooth',
+  }))
   return [{ id: uid('sp'), closed: true, nodes }]
 }
 

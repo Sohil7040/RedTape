@@ -1,3 +1,4 @@
+import { UI_OPERATION_COLORS as OPERATION_COLORS } from '../core/workspace'
 import { useState } from 'react'
 import {
   ChevronDown, ChevronRight, Circle, Eye, EyeOff, FileStack, Layers3, Lock, LockOpen, Minus, MoreHorizontal,
@@ -5,7 +6,7 @@ import {
   FolderSync, Gauge, Zap,
 } from 'lucide-react'
 import { EditorState, EditorStore } from '../core/store'
-import { OPERATION_COLORS, Shape, layerOperation } from '../core/model'
+import { Shape, layerOperation } from '../core/model'
 import { IconButton, ProcessNumber } from './ui'
 
 interface Props { state: EditorState; store: EditorStore }
@@ -23,6 +24,7 @@ function shapeIcon(shape: Shape) {
 }
 
 export default function LeftDock({ state, store }: Props) {
+  const [search,setSearch] = useState('')
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({})
   const [tab, setTab] = useState<'layers' | 'document'>('layers')
   const [editingLayerId, setEditingLayerId] = useState<string | null>(null)
@@ -47,21 +49,22 @@ export default function LeftDock({ state, store }: Props) {
   }
 
   return (
-    <aside className={`left-dock ${state.leftOpen ? '' : 'collapsed'}`}>
+    <aside className={`left-dock ${state.leftOpen ? '' : 'collapsed'}`} aria-label="Objects and sheets">
       <div className="dock-head">
         <div>
-          <span className="eyebrow">DOCUMENT</span>
-          <h2>Artwork</h2>
+
+          <h2>Document</h2>
         </div>
-        <button className="dock-collapse" onClick={() => store.toggleLeft()} title="Hide panel"><PanelLeftClose size={14} /></button>
+        <button className="dock-collapse" onClick={() => store.toggleLeft()} title="Close Objects panel" aria-label="Close Objects panel"><PanelLeftClose size={14} /></button>
       </div>
       <div className="subtabs">
-        <button className={tab === 'layers' ? 'on' : ''} onClick={() => setTab('layers')}><Layers3 size={13} />Layers</button>
-        <button className={tab === 'document' ? 'on' : ''} onClick={() => setTab('document')}><FileStack size={13} />Document</button>
+        <button className={tab === 'layers' ? 'on' : ''} onClick={() => setTab('layers')}><Layers3 size={13} />Objects</button>
+        <button className={tab === 'document' ? 'on' : ''} onClick={() => setTab('document')}><FileStack size={13} />Sheets</button>
       </div>
 
       {tab === 'layers' ? (
         <>
+          <input className="object-search" aria-label="Search layers and objects" placeholder="Search objects…" value={search} onChange={e=>setSearch(e.target.value)} />
           <div className="tree-tools">
             <span>{doc.layers.length} LAYERS · {doc.layers.reduce((n, l) => n + l.shapes.length, 0)} OBJECTS</span>
             <div>
@@ -70,7 +73,7 @@ export default function LeftDock({ state, store }: Props) {
             </div>
           </div>
           <div className="layer-tree scroll">
-            {[...doc.layers].reverse().map(layer => {
+            {[...doc.layers].reverse().filter(layer=>!search||layer.name.toLowerCase().includes(search.toLowerCase())||layer.shapes.some(s=>s.name.toLowerCase().includes(search.toLowerCase()))).map(layer => {
               const isCollapsed = collapsed[layer.id]
               const layerOp = layerOperation(doc.production, layer.id)
               const count = layer.shapes.length
@@ -80,7 +83,7 @@ export default function LeftDock({ state, store }: Props) {
               return (
                 <div className={`layer-block ${isActive ? 'active' : ''}`} key={layer.id}>
                   <div className={`layer-row ${isActive ? 'active' : ''}`} onClick={() => store.setActiveLayer(layer.id)}>
-                    <button className="twist" onClick={e => { e.stopPropagation(); setCollapsed(c => ({ ...c, [layer.id]: !c[layer.id] })) }}>
+                    <button aria-label={`Toggle ${layer.name} objects`} aria-expanded={!isCollapsed} className="twist" onClick={e => { e.stopPropagation(); setCollapsed(c => ({ ...c, [layer.id]: !c[layer.id] })) }}>
                       {isCollapsed ? <ChevronRight size={12} /> : <ChevronDown size={12} />}
                     </button>
                     <input className="layer-color-input" type="color" value={layer.color} aria-label={`Colour for ${layer.name}`} title="Layer colour — applies to its objects" onClick={e => e.stopPropagation()} onChange={e => store.setLayerColor(layer.id, e.target.value)} />
@@ -113,6 +116,7 @@ export default function LeftDock({ state, store }: Props) {
 
                     <span
                       className="layer-op-badge"
+                      role="button" tabIndex={0} aria-label={`Edit ${layer.name} laser operation`} onKeyDown={e=>{if(e.key==='Enter')store.setWorkflow('laser')}}
                       style={{ color: OPERATION_COLORS[layerOp.mode], borderColor: `${OPERATION_COLORS[layerOp.mode]}55` }}
                       title={`Click to open Laser params (${layerOp.speed}mm/s, ${layerOp.power}%)`}
                       onClick={e => {
@@ -132,45 +136,18 @@ export default function LeftDock({ state, store }: Props) {
                     </button>
                   </div>
 
-                  {/* Inline Laser Speed & Power Controls for Each Layer */}
-                  <div className="layer-cam-inline" onClick={e => e.stopPropagation()}>
-                    <div className="layer-cam-field">
-                      <Gauge size={10} />
-                      <input
-                        type="number"
-                        value={layerOp.speed}
-                        step={1}
-                        min={1}
-                        max={1000}
-                        onChange={e => store.setLayerSpeed(layer.id, Number(e.target.value))}
-                        title="Layer Speed in mm/s"
-                      />
-                      <em>mm/s</em>
-                    </div>
-                    <div className="layer-cam-field">
-                      <Zap size={10} />
-                      <ProcessNumber
-                        value={layerOp.maxPower ?? layerOp.power}
-                        step={1}
-                        min={0}
-                        max={99}
-                        onChange={v => store.setLayerPower(layer.id, v)}
-                        title="Laser Power % (<=99% safe ceiling)"
-                      />
-                      <em>%</em>
-                    </div>
-                  </div>
-
                   {!isCollapsed && (
                     <div className="shape-list">
                       {count === 0 && <div className="layer-empty">No objects on this layer</div>}
-                      {[...layer.shapes].reverse().map(shape => {
+                      {[...layer.shapes].reverse().filter(shape=>!search||layer.name.toLowerCase().includes(search.toLowerCase())||shape.name.toLowerCase().includes(search.toLowerCase())).map(shape => {
                         const Icon = shapeIcon(shape)
                         const isSel = selected.has(shape.id)
                         return (
                           <div
                             key={shape.id}
                             className={`shape-row ${isSel ? 'selected' : ''}`}
+                            role="button" tabIndex={0} aria-label={`Select ${shape.name}`} aria-pressed={isSel}
+                            onKeyDown={e=>{if(e.target!==e.currentTarget)return;if(e.key==='Enter'||e.key===' '){e.preventDefault();store.setSelection([shape.id],e.shiftKey,true)}}}
                             onClick={e => store.setSelection([shape.id], e.shiftKey, true)}
                             onDoubleClick={() => { store.setTool('node'); store.setSelection([shape.id]) }}
                           >
@@ -249,31 +226,13 @@ export default function LeftDock({ state, store }: Props) {
         </>
       ) : (
         <div className="document-pane scroll">
-          <div className="page-card">
-            <div className="page-thumb">
-              <div className="page-thumb-inner">
-                <span />
-                <span />
-                <span />
-              </div>
-            </div>
-            <div className="page-card-meta">
-              <span className="eyebrow">PAGE 01</span>
-              <strong>{doc.page.name}</strong>
-              <span>{doc.page.width} × {doc.page.height} mm · {doc.page.unit.toUpperCase()}</span>
-            </div>
-          </div>
-          <div className="doc-stats">
-            <div><span>Objects</span><strong>{doc.layers.reduce((n, l) => n + l.shapes.length, 0)}</strong></div>
-            <div><span>Nodes</span><strong>{doc.layers.reduce((n, l) => n + l.shapes.reduce((m, s) => m + s.subpaths.reduce((k, sp) => k + sp.nodes.length, 0), 0), 0)}</strong></div>
-            <div><span>Guides</span><strong>{doc.guides.length}</strong></div>
-          </div>
-          <div className="page-field-row"><span>Background</span><span className="inline-color"><i style={{ background: doc.page.color }} />{doc.page.color.toUpperCase()}</span></div>
-          <div className="page-field-row"><span>Grid</span><span>{doc.grid.size} mm / {doc.grid.subdivisions} div</span></div>
-          <div className="page-field-row"><span>Color mode</span><span>RGB / 8</span></div>
-          <div className="page-field-row"><span>Origin</span><span>Top left</span></div>
-          <button className="wide-ghost" onClick={() => store.resetDemo()}><Trash2 size={13} />Restore showcase</button>
-          <p className="doc-note">Corelith uses double-precision millimetre coordinates with a 3×3 affine viewport matrix. Exports are resolution independent.</p>
+          {(doc.pages??[doc.page]).map((page,index)=><div className={`sheet-item ${page.id===doc.activePageId?'active':''}`} key={page.id??index}>
+            <button className="sheet-select" onClick={()=>page.id&&store.setActivePage(page.id)}><FileStack size={18}/><span><strong>{page.name}</strong><small>{page.width} × {page.height} mm</small></span></button>
+            <label>Sheet name<input aria-label={`Sheet ${index+1} name`} value={page.name} onChange={e=>page.id&&store.renamePage(page.id,e.target.value)}/></label>
+            {page.id===doc.activePageId&&<button className="wide-ghost" onClick={()=>store.setRightTab('design')}>Edit sheet dimensions</button>}
+            {(doc.pages?.length??1)>1&&<button className="wide-ghost danger" onClick={()=>page.id&&store.deletePage(page.id)}>Delete sheet</button>}
+          </div>)}
+          <button className="wide-ghost" onClick={()=>store.addPage()}><Plus size={14}/>Add sheet</button>
         </div>
       )}
 

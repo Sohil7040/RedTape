@@ -17,7 +17,7 @@ export function collectStaticCandidates(
   const out: SnapCandidate[] = []
   const shapes = allShapes(doc).filter(s => !exclude.has(s.id))
   for (const shape of shapes) {
-    if (shape.locked) continue
+    if (shape.locked || shape.hidden) continue
     if (settings.nodes || settings.midpoints || settings.centers) {
       const pts = pathSnapPoints(shape.subpaths, shapeBounds(shape), shape.id, shape.name)
       for (const p of pts) {
@@ -41,12 +41,12 @@ export function collectStaticCandidates(
 
   if (settings.intersections) {
     const nearRadius = 70 / Math.max(0.05, zoom)
-    const starts: { shape: Shape; poly: Pt[]; bounds: Bounds }[] = []
+    const starts: { shape: Shape; poly: Pt[]; closed: boolean; bounds: Bounds }[] = []
     for (const shape of shapes) {
       for (const sub of shape.subpaths) {
         const sb = pathBounds([sub])
         if (distToBounds(pointer, sb) > nearRadius) continue
-        starts.push({ shape, poly: flattenSubpath(sub, 0.5), bounds: sb })
+        starts.push({ shape, poly: flattenSubpath(sub, Math.min(0.5, 0.5 / Math.max(0.05, zoom))), closed: sub.closed, bounds: sb })
       }
     }
     for (let i = 0; i < starts.length; i++) {
@@ -54,9 +54,9 @@ export function collectStaticCandidates(
         if (starts[i].shape.id === starts[j].shape.id) continue
         if (!boundsOverlap(starts[i].bounds, starts[j].bounds, 0.1)) continue
         const a = starts[i].poly, b = starts[j].poly
-        for (let ai = 0; ai < a.length; ai++) {
+        for (let ai = 0; ai < a.length - (starts[i].closed ? 0 : 1); ai++) {
           const a0 = a[ai], a1 = a[(ai + 1) % a.length]
-          for (let bi = 0; bi < b.length; bi++) {
+          for (let bi = 0; bi < b.length - (starts[j].closed ? 0 : 1); bi++) {
             const b0 = b[bi], b1 = b[(bi + 1) % b.length]
             const p = lineSegIntersect(a0, a1, b0, b1)
             if (!p) continue
@@ -116,30 +116,49 @@ function isEndpoint(c: { p0: Pt; p3: Pt }, t: number, eps: number): boolean {
 }
 
 function nearestTangent(c: { p0: Pt; p1: Pt; p2: Pt; p3: Pt }, p: Pt): Pt | null {
-  let best: { pt: Pt; dot: number } | null = null
-  const n = 36
-  const ptAt = (t: number): Pt => {
-    const mt = 1 - t, a = mt * mt * mt, b = 3 * mt * mt * t, d = 3 * mt * t * t, e = t * t * t
-    return { x: a * c.p0.x + b * c.p1.x + d * c.p2.x + e * c.p3.x, y: a * c.p0.y + b * c.p1.y + d * c.p2.y + e * c.p3.y }
-  }
-  const derivative = (t: number): Pt => {
+  const bx = c.p3.x - c.p0.x, by = c.p3.y - c.p0.y
+  const baseline = Math.hypot(bx, by)
+  if (baseline > 1e-9 &&
+    Math.abs((c.p1.x - c.p0.x) * by - (c.p1.y - c.p0.y) * bx) / baseline < 1e-9 &&
+    Math.abs((c.p2.x - c.p0.x) * by - (c.p2.y - c.p0.y) * bx) / baseline < 1e-9) return null
+  const at = (t: number): { pt: Pt; cross: number; scale: number } => {
     const mt = 1 - t
-    return {
-      x: 3 * mt * mt * (c.p1.x - c.p0.x) + 6 * mt * t * (c.p2.x - c.p1.x) + 3 * t * t * (c.p3.x - c.p2.x),
-      y: 3 * mt * mt * (c.p1.y - c.p0.y) + 6 * mt * t * (c.p2.y - c.p1.y) + 3 * t * t * (c.p3.y - c.p2.y),
+    const pt = {
+      x: mt ** 3 * c.p0.x + 3 * mt * mt * t * c.p1.x + 3 * mt * t * t * c.p2.x + t ** 3 * c.p3.x,
+      y: mt ** 3 * c.p0.y + 3 * mt * mt * t * c.p1.y + 3 * mt * t * t * c.p2.y + t ** 3 * c.p3.y,
     }
+    const dx = 3 * mt * mt * (c.p1.x - c.p0.x) + 6 * mt * t * (c.p2.x - c.p1.x) + 3 * t * t * (c.p3.x - c.p2.x)
+    const dy = 3 * mt * mt * (c.p1.y - c.p0.y) + 6 * mt * t * (c.p2.y - c.p1.y) + 3 * t * t * (c.p3.y - c.p2.y)
+    const vx = p.x - pt.x, vy = p.y - pt.y
+    return { pt, cross: dx * vy - dy * vx, scale: Math.hypot(dx, dy) * Math.hypot(vx, vy) }
   }
-  for (let i = 1; i < n; i++) {
-    const t = i / n
-    const pt = ptAt(t), d = derivative(t)
-    const v = { x: p.x - pt.x, y: p.y - pt.y }
-    const l = Math.hypot(d.x, d.y) * Math.hypot(v.x, v.y)
-    if (l < 1e-9) continue
-    let dot = (d.x * v.x + d.y * v.y) / l
-    dot = Math.abs(dot)
-    if (!best || dot < best.dot) best = { pt, dot }
+  let best: Pt | null = null
+  const consider = (t: number) => {
+    const hit = at(t)
+    // The tangent and the line from the contact point to the pointer must
+    // be parallel. A perpendicular foot is a different snap mode.
+    if (hit.scale < 1e-9 || Math.abs(hit.cross) / hit.scale > 1e-5) return
+    if (!best || dist(hit.pt, p) < dist(best, p)) best = hit.pt
   }
-  return best && best.dot < 0.04 ? best.pt : null
+  const n = 72
+  let previous = at(0)
+  consider(0)
+  for (let i = 1; i <= n; i++) {
+    const current = at(i / n)
+    if (previous.cross * current.cross < 0) {
+      let lo = (i - 1) / n, hi = i / n
+      const sign = previous.cross
+      for (let iteration = 0; iteration < 28; iteration++) {
+        const mid = (lo + hi) / 2
+        if (at(mid).cross * sign > 0) lo = mid
+        else hi = mid
+      }
+      consider((lo + hi) / 2)
+    }
+    consider(i / n)
+    previous = current
+  }
+  return best
 }
 
 export function snapPoint(
@@ -201,7 +220,7 @@ export function alignmentSnap(
 
   // 1. Evaluate against other shapes
   for (const shape of otherShapes) {
-    if (shape.locked) continue
+    if (shape.locked || shape.hidden) continue
     const b = shapeBounds(shape)
 
     const targetsX = [
@@ -354,6 +373,7 @@ export function guideRaysForSnap(hit: SnapHit, otherShapes: Shape[], all: boolea
   if (!all) return [{ axis: 'y', position: hit.y, color: '#44b8ff' }, { axis: 'x', position: hit.x, color: '#ff8a3c' }]
   const rays: SnapRay[] = []
   for (const shape of otherShapes) {
+    if (shape.locked || shape.hidden) continue
     const b = shapeBounds(shape)
     if (Math.abs(b.y + b.h / 2 - hit.y) < 0.4 || Math.abs(b.y - hit.y) < 0.4 || Math.abs(b.y + b.h - hit.y) < 0.4) {
       rays.push({ axis: 'y', position: hit.y, color: '#44b8ff' })

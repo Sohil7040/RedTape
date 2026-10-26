@@ -35,19 +35,16 @@ export function renderScene(ctx: CanvasRenderingContext2D, state: EditorState, d
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
   ctx.clearRect(0, 0, W, H)
   // Light modern drafting workspace background
-  ctx.fillStyle = '#f1f5f9'
+  ctx.fillStyle = state.theme === 'dark' ? '#171b20' : '#F5F6F7'
   ctx.fillRect(0, 0, W, H)
-  drawWorkspaceTexture(ctx, W, H)
+  // Keep the work surface quiet; the optional document grid supplies precision.
 
   // page block
   const pw = doc.page.width * view.zoom
   const ph = doc.page.height * view.zoom
-  // Crisp layered shadow for artboard on light drafting surface
   ctx.save()
-  for (let i = 8; i >= 0; i--) {
-    ctx.fillStyle = `rgba(15,23,42,${0.018 + i * 0.003})`
-    ctx.fillRect(view.panX - i * 2, view.panY + 4 - i * 1.5, pw + i * 4, ph + i * 4)
-  }
+  ctx.fillStyle = state.theme==='dark'?'#101419':'#dde1e5'
+  ctx.fillRect(view.panX-1,view.panY-1,pw+2,ph+2)
   ctx.fillStyle = doc.page.color || '#ffffff'
   ctx.fillRect(view.panX, view.panY, pw, ph)
   ctx.restore()
@@ -308,19 +305,7 @@ function drawProductionPreview(ctx: CanvasRenderingContext2D, state: EditorState
     ctx.restore()
   }
 
-  // Production Summary Banner
-  ctx.save()
-  ctx.fillStyle = 'rgba(15,23,42,0.88)'
-  ctx.fillRect(left + 10, top + 10, 200, 38)
-  ctx.strokeStyle = 'rgba(13,148,136,0.4)'
-  ctx.strokeRect(left + 10.5, top + 10.5, 199, 37)
-  ctx.fillStyle = '#14b8a6'
-  ctx.font = '700 8px "JetBrains Mono", monospace'
-  ctx.fillText('RUIDA / RDWORKS LASER JOB', left + 18, top + 23)
-  ctx.fillStyle = '#cbd5e1'
-  ctx.font = '600 7.5px "JetBrains Mono", monospace'
-  ctx.fillText(`${job.paths.length} PATHS · ${(job.totalLength / 1000).toFixed(2)}M · ${formatTime(job.totalTime)}`, left + 18, top + 37)
-  ctx.restore()
+
 }
 
 function formatTime(s: number): string {
@@ -819,7 +804,7 @@ export function drawDraft(ctx: CanvasRenderingContext2D, state: EditorState): vo
       ctx.setLineDash([6, 4])
       ctx.beginPath()
       screenPts.forEach((p, i) => i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y))
-      if (d.cursor && (d.mode === 'freehand' || d.mode === 'bezier') && !d.drawing) {
+      if (d.cursor && !d.drawing) {
         ctx.lineTo(d.cursor.x * v.zoom + v.panX, d.cursor.y * v.zoom + v.panY)
       }
       ctx.stroke()
@@ -956,7 +941,7 @@ function drawRulers(ctx: CanvasRenderingContext2D, state: EditorState): void {
   const W = view.width, H = view.height
   ctx.save()
   // Clean light ruler background
-  ctx.fillStyle = '#f8fafc'
+  ctx.fillStyle = state.theme === 'dark' ? '#22282f' : '#f5f6f7'
   ctx.fillRect(0, 0, W, RULER)
   ctx.fillRect(0, 0, RULER, H)
   ctx.strokeStyle = '#e2e8f0'
@@ -976,25 +961,25 @@ function drawRulers(ctx: CanvasRenderingContext2D, state: EditorState): void {
     const sx = Math.round(view.panX + x * view.zoom) + 0.5
     if (sx < RULER) continue
     const major = Math.abs(x / step - Math.round(x / step)) < 1e-6
-    ctx.strokeStyle = major ? '#64748b' : '#cbd5e1'
+    ctx.strokeStyle = major ? (state.theme==='dark'?'#aab4c0':'#69727d') : (state.theme==='dark'?'#53606e':'#b8c0c8')
     ctx.beginPath(); ctx.moveTo(sx, major ? 10 : 16); ctx.lineTo(sx, RULER); ctx.stroke()
-    if (major) { ctx.fillStyle = '#334155'; ctx.fillText(formatRuler(x), sx + 3, 3) }
+    if (major) { ctx.fillStyle = (state.theme==='dark'?'#cbd2da':'#444e59'); ctx.fillText(formatRuler(x), sx + 3, 3) }
     if (Math.abs(x) < 1e-6) { ctx.fillStyle = '#0d9488'; ctx.fillText('0', sx + 3, 3) }
   }
   for (let y = Math.floor(worldTop / minor) * minor; y <= worldBottom; y += minor) {
     const sy = Math.round(view.panY + y * view.zoom) + 0.5
     if (sy < RULER) continue
     const major = Math.abs(y / step - Math.round(y / step)) < 1e-6
-    ctx.strokeStyle = major ? '#64748b' : '#cbd5e1'
+    ctx.strokeStyle = major ? (state.theme==='dark'?'#aab4c0':'#69727d') : (state.theme==='dark'?'#53606e':'#b8c0c8')
     ctx.beginPath(); ctx.moveTo(major ? 10 : 16, sy); ctx.lineTo(RULER, sy); ctx.stroke()
     if (major) {
       ctx.save(); ctx.translate(3, sy + 3); ctx.rotate(Math.PI / 2)
-      ctx.fillStyle = '#334155'; ctx.fillText(formatRuler(y), 0, 0); ctx.restore()
+      ctx.fillStyle = (state.theme==='dark'?'#cbd2da':'#444e59'); ctx.fillText(formatRuler(y), 0, 0); ctx.restore()
     }
   }
   ctx.fillStyle = '#f1f5f9'
   ctx.fillRect(0, 0, RULER, RULER)
-  ctx.fillStyle = '#64748b'
+  ctx.fillStyle = (state.theme==='dark'?'#aab4c0':'#69727d')
   ctx.font = '700 7px "JetBrains Mono", monospace'
   ctx.fillText('MM', 6, 8)
   ctx.strokeStyle = '#e2e8f0'

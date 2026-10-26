@@ -79,7 +79,7 @@ function parseDXF(text: string): { shapes: Shape[]; warnings: string[] } {
       }
     } else if (type === 'POLYLINE') {
       const flags = Number(find(body, 70) ?? 0)
-      const pts: Pt[] = []
+      const pts: DxfPolylineVertex[] = []
       let j = end
       while (j < tags.length) {
         if (tags[j].code === 0 && tags[j].value === 'VERTEX') {
@@ -87,7 +87,7 @@ function parseDXF(text: string): { shapes: Shape[]; warnings: string[] } {
           while (k < tags.length && tags[k].code !== 0) k++
           const vb = tags.slice(j + 1, k)
           const p = vec(vb, 10, 20, scale)
-          if (p) pts.push(p)
+          if (p) pts.push({ ...p, bulge: Number(find(vb, 42) ?? 0) })
           j = k
           continue
         }
@@ -104,15 +104,15 @@ function parseDXF(text: string): { shapes: Shape[]; warnings: string[] } {
           closed = true
           pts.pop()
         }
-        shapes.push(makeImportedShape(`DXF POLYLINE ${index}`, [{ id: uid('sp'), closed, nodes: pts.map(p => makeNode(p.x, p.y)) }]))
+        shapes.push(makeImportedShape(`DXF POLYLINE ${index}`, [{ id: uid('sp'), closed, nodes: polylineNodes(pts, closed) }]))
       }
       tagImported(shapes, shapesBefore, dxfLayer)
       i = j
       continue
     } else if (type === 'LWPOLYLINE') {
-      const nodes = lwPolylineNodes(body, scale)
+      const flags = Number(find(body, 70) ?? 0)
+      const nodes = lwPolylineNodes(body, scale, !!(flags & 1))
       if (nodes.length > 1) {
-        const flags = Number(find(body, 70) ?? 0)
         shapes.push(makeImportedShape(`DXF POLYLINE ${index}`, [{ id: uid('sp'), closed: !!(flags & 1), nodes }]))
       }
     } else if (type === 'CIRCLE') {
@@ -125,12 +125,7 @@ function parseDXF(text: string): { shapes: Shape[]; warnings: string[] } {
       const a0 = Number(find(body, 50) ?? 0), a1 = Number(find(body, 51) ?? 0)
       if (c && r > 0) {
         const sweep = ((a1 - a0 + 360) % 360) || 360
-        const steps = arcSteps(r, sweep * Math.PI / 180)
-        const nodes: PathNode[] = []
-        for (let s = 0; s <= steps; s++) {
-          const a = ((a0 + (sweep * s) / steps) * Math.PI) / 180
-          nodes.push(makeNode(c.x + Math.cos(a) * r, c.y + Math.sin(a) * r))
-        }
+        const nodes = arcNodes(c, r, a0 * Math.PI / 180, sweep * Math.PI / 180)
         shapes.push(makeImportedShape(`DXF ARC ${index}`, [{ id: uid('sp'), closed: false, nodes }]))
       }
     } else if (['SPLINE', 'ELLIPSE', 'INSERT', 'TEXT', 'MTEXT', 'HATCH', 'DIMENSION'].includes(type)) {
@@ -150,10 +145,26 @@ function tagImported(shapes: Shape[], from: number, layer: string): void {
   }
 }
 
-function arcSteps(radius: number, radians: number): number {
-  // Limit chord sagitta to 0.05 mm, including large-radius DXF arcs/bulges.
-  const angle = 2 * Math.acos(Math.max(-1, Math.min(1, 1 - 0.05 / Math.max(0.05, radius))))
-  return Math.min(10000, Math.max(4, Math.ceil(Math.abs(radians) / Math.max(1e-6, angle))))
+// Keep imported arcs editable as tangent cubic spans. The conservative sixth-order
+// span bound keeps source approximation below 0.001 mm, independently of radius;
+// production flattening controls the final machining chord error separately.
+function arcNodes(center: Pt, radius: number, start: number, sweep: number): PathNode[] {
+  const maxAngle = Math.min(Math.PI / 4, Math.pow(0.001 * 1000 / radius, 1 / 6))
+  const count = Math.max(1, Math.ceil(Math.abs(sweep) / maxAngle))
+  if (!Number.isFinite(count) || count > 10000) throw new Error('DXF arc exceeds the supported curve complexity.')
+  const step = sweep / count
+  const nodes: PathNode[] = []
+  for (let i = 0; i <= count; i++) {
+    const a = start + step * i
+    nodes.push(makeNode(center.x + radius * Math.cos(a), center.y + radius * Math.sin(a), 'smooth'))
+  }
+  const h = 4 / 3 * Math.tan(step / 4) * radius
+  for (let i = 0; i < count; i++) {
+    const a = start + step * i, b = a + step
+    nodes[i].out = { x: nodes[i].x - Math.sin(a) * h, y: nodes[i].y + Math.cos(a) * h }
+    nodes[i + 1].in = { x: nodes[i + 1].x + Math.sin(b) * h, y: nodes[i + 1].y - Math.cos(b) * h }
+  }
+  return nodes
 }
 
 function unitScale(units: number): number {
@@ -185,9 +196,11 @@ function vec(body: Tag[], cx: number, cy: number, scale: number): Pt | null {
   return { x: Number(x) * scale, y: Number(y) * scale }
 }
 
-function lwPolylineNodes(body: Tag[], scale: number): PathNode[] {
-  const pts: { x: number; y: number; bulge: number }[] = []
-  let current: { x: number; y: number; bulge: number } | null = null
+interface DxfPolylineVertex extends Pt { bulge: number }
+
+function lwPolylineNodes(body: Tag[], scale: number, closed: boolean): PathNode[] {
+  const pts: DxfPolylineVertex[] = []
+  let current: DxfPolylineVertex | null = null
   for (const t of body) {
     if (t.code === 10) {
       if (current) pts.push(current)
@@ -196,38 +209,39 @@ function lwPolylineNodes(body: Tag[], scale: number): PathNode[] {
     else if (t.code === 42 && current) current.bulge = Number(t.value)
   }
   if (current) pts.push(current)
+  return polylineNodes(pts, closed)
+}
+
+function polylineNodes(pts: DxfPolylineVertex[], closed: boolean): PathNode[] {
   if (!pts.length) return []
-  const nodes: PathNode[] = []
-  for (let i = 0; i < pts.length; i++) {
-    const p = pts[i]
-    nodes.push(makeNode(p.x, p.y))
-    const next = pts[(i + 1) % pts.length]
-    if (Math.abs(p.bulge) > 1e-6 && i < pts.length - 1) {
-      const arc = bulgePoints(p, next, p.bulge)
-      for (let j = 1; j < arc.length - 1; j++) nodes.push(makeNode(arc[j].x, arc[j].y))
-    }
+  const nodes = [makeNode(pts[0].x, pts[0].y)]
+  const edgeCount = closed ? pts.length : pts.length - 1
+  for (let i = 0; i < edgeCount; i++) {
+    const a = pts[i], b = pts[(i + 1) % pts.length]
+    const arc = Math.abs(a.bulge) > 1e-10 ? bulgeNodes(a, b, a.bulge) : [makeNode(a.x, a.y), makeNode(b.x, b.y)]
+    nodes[nodes.length - 1].out = arc[0].out
+    nodes.push(...arc.slice(1, -1))
+    if (closed && i === edgeCount - 1) nodes[0].in = arc[arc.length - 1].in
+    else { arc[arc.length - 1].type = 'cusp'; nodes.push(arc[arc.length - 1]) }
   }
   return nodes
 }
 
-function bulgePoints(a: Pt, b: Pt, bulge: number): Pt[] {
+function bulgeNodes(a: Pt, b: Pt, bulge: number): PathNode[] {
   const theta = 4 * Math.atan(bulge)
-  if (Math.abs(theta) < 1e-4) return [a, b]
-  const dx = b.x - a.x, dy = b.y - a.y
-  const chord = Math.hypot(dx, dy)
-  if (chord < 1e-7) return [a, b]
-  const left = { x: -dy / chord, y: dx / chord }
+  const dx = b.x - a.x, dy = b.y - a.y, chord = Math.hypot(dx, dy)
+  if (chord < 1e-10) return [makeNode(a.x, a.y), makeNode(b.x, b.y)]
   const d = (chord / 2) / Math.tan(theta / 2)
-  const center = { x: (a.x + b.x) / 2 + left.x * d, y: (a.y + b.y) / 2 + left.y * d }
+  const center = { x: (a.x + b.x) / 2 - dy / chord * d, y: (a.y + b.y) / 2 + dx / chord * d }
   const radius = Math.hypot(a.x - center.x, a.y - center.y)
-  const start = Math.atan2(a.y - center.y, a.x - center.x)
-  const steps = arcSteps(radius, theta)
-  const out: Pt[] = []
-  for (let i = 0; i <= steps; i++) {
-    const ang = start + (theta * i) / steps
-    out.push({ x: center.x + Math.cos(ang) * radius, y: center.y + Math.sin(ang) * radius })
-  }
-  return out
+  const nodes = arcNodes(center, radius, Math.atan2(a.y - center.y, a.x - center.x), theta)
+  // Preserve the supplied vertices exactly, including shallow arcs at large radii.
+  const first = nodes[0], last = nodes[nodes.length - 1]
+  first.out.x += a.x - first.x; first.out.y += a.y - first.y
+  first.x = a.x; first.y = a.y; first.in = { x: a.x, y: a.y }
+  last.in.x += b.x - last.x; last.in.y += b.y - last.y
+  last.x = b.x; last.y = b.y; last.out = { x: b.x, y: b.y }
+  return nodes
 }
 
 /* ── HPGL / PLT parser ────────────────────────────────────────── */

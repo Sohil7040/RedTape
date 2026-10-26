@@ -1,4 +1,6 @@
-import { useState } from 'react'
+import { useEffect } from 'react'
+import RadialPatternPreview from '../RadialPatternPreview'
+import {radialLayout} from '../../core/patterns'
 import { ArrowRight, ArrowUp, CircleDot, Grid2X2, MoveRight, Orbit, Sparkles, Target, WandSparkles } from 'lucide-react'
 import { EditorStore, EditorState } from '../../core/store'
 import { gridPatternCount, radialStep } from '../../core/patterns'
@@ -8,22 +10,26 @@ import { NumField, Section, Segmented, Switch } from '../ui'
 interface Props { state: EditorState; store: EditorStore }
 
 export default function PatternsPanel({ state, store }: Props) {
-  const [tab, setTab] = useState<'grid' | 'radial'>('grid')
+  const tab = state.patternTab ?? 'grid'
+  const setTab = (value: 'grid' | 'radial') => store.openPatterns(value)
   const selected = store.getSelectedShapes()
   const primary = selected[0]
   const b = selected.length ? selectionBounds(selected) : null
   const grid = state.gridPattern
   const radial = state.radialPattern
-  const gridCount = gridPatternCount(grid)
+  const sourceIds=selected.map(s=>s.id).sort().join('|')
+  useEffect(()=>{if(tab==='radial')store.openPatterns('radial')},[tab,sourceIds,store])
+  const layout=b?radialLayout(b,radial):null
+  const gridCount = gridPatternCount(grid) * selected.length
 
   return (
-    <div className="inspector-stack">
+    <div className="inspector-stack patterns-panel">
       <div className="pattern-head">
         <div>
-          <span className="eyebrow">PROCEDURAL ARRAYS</span>
-          <h2>Pattern engine</h2>
+          <span className="eyebrow">DUPLICATE & ARRANGE</span>
+          <h2>Repeat artwork</h2>
         </div>
-        <span className="pattern-mode">{tab === 'grid' ? 'CARTESIAN' : 'POLAR'}</span>
+        <span className="pattern-mode">{selected.length} selected</span>
       </div>
       <div className="pattern-tabs">
         <button className={tab === 'grid' ? 'on' : ''} onClick={() => setTab('grid')}><Grid2X2 size={14} />Rectangular</button>
@@ -31,7 +37,7 @@ export default function PatternsPanel({ state, store }: Props) {
       </div>
 
       {!primary && (
-        <div className="pattern-warning"><Target size={14} /><span>Select an artwork object to activate the array engine.</span></div>
+        <div className="pattern-warning"><Target size={14} /><span>Select the objects you want to repeat.</span></div>
       )}
 
       {tab === 'grid' ? (
@@ -74,10 +80,10 @@ export default function PatternsPanel({ state, store }: Props) {
                 <button className={grid.directionY === -1 ? 'on' : ''} onClick={() => store.setGridPattern({ directionY: -1 })}><ArrowUp size={13} />−Y</button>
               </div>
             </div>
-            <div className="formula-box">
+            <details className="pattern-math"><summary>Spacing details</summary><div className="formula-box">
               <span>P(r,c) = P₀ + c · ΔX · x̂ + r · ΔY · ŷ</span>
-              <small>{grid.mode === 'spacing' ? 'ΔX = width + gap · ΔY = height + gap' : 'ΔX / ΔY measured origin to origin'}</small>
-            </div>
+              <small>{grid.mode === 'spacing' ? 'ΔX = selection width + gap · ΔY = selection height + gap' : 'ΔX / ΔY measured origin to origin'}</small>
+            </div></details>
             <button className="apply-btn" disabled={!primary || gridCount === 0} onClick={() => store.applyGridPattern()}>
               <WandSparkles size={16} />
               <span>Apply step & repeat</span>
@@ -88,29 +94,11 @@ export default function PatternsPanel({ state, store }: Props) {
         </>
       ) : (
         <>
-          <div className="pattern-preview radial-preview">
-            <div className="radial-stage">
-              <span className="radial-orbit o1" /><span className="radial-orbit o2" /><span className="radial-orbit o3" />
-              <span className="radial-pivot" />
-              {Array.from({ length: Math.min(16, Math.max(1, radial.copies)) }).map((_, i) => {
-                const count = Math.min(16, Math.max(1, radial.copies))
-                const a = ((radial.startAngle + (i + 1) * radialStep(radial.span, radial.copies)) * Math.PI) / 180
-                return <span key={i} className="radial-dot" style={{ transform: `translate(${Math.cos(a) * 46}px, ${Math.sin(a) * 46}px) rotate(${radial.rotateWithShape ? (a * 180) / Math.PI : 0}deg)` }} />
-              })}
-              <span className="radial-center-mark">⊕</span>
-            </div>
-            <div className="pattern-preview-meta">
-              <span className="eyebrow">POLAR ARRAY</span>
-              <strong>{radial.copies} × copies</strong>
-              <span>{radial.span}° span</span>
-            </div>
-            <span className="pattern-corner">Δθ {radialStep(radial.span, radial.copies).toFixed(1)}°</span>
-          </div>
-
+          <RadialPatternPreview state={state} store={store}/>
           <Section title="Circular array" action={<span className="section-hint">ROTATE</span>}>
             <div className="num-grid two">
-              <NumField label="Copies" value={radial.copies} onChange={v => store.setRadialPattern({ copies: Math.max(1, Math.round(v)) })} min={1} max={72} precision={0} />
-              <NumField label="Radius" value={radial.radius} onChange={v => store.setRadialPattern({ radius: Math.max(0, v) })} min={0} suffix="mm" />
+              <NumField label="New copies" value={radial.copies} onChange={v => store.setRadialPattern({ copies: Math.max(1, Math.round(v)) })} min={1} max={72} precision={0} />
+              <NumField label="Radius (0 = auto)" value={radial.radius} onChange={v => store.setRadialPattern({ radius: Math.max(0, v) })} min={0} suffix="mm" />
             </div>
             <div className="num-grid two">
               <NumField label="Pivot X" value={radial.pivotX} onChange={v => store.setRadialPattern({ pivotX: v })} suffix="mm" />
@@ -118,24 +106,24 @@ export default function PatternsPanel({ state, store }: Props) {
             </div>
             <button className="wide-ghost" onClick={() => store.useSelectionAsRadialAnchor()}><Target size={13} />Pivot to selection centre</button>
             <div className="num-grid two">
-              <NumField label="Start" value={radial.startAngle} onChange={v => store.setRadialPattern({ startAngle: v })} suffix="°" />
-              <NumField label="Span" value={radial.span} onChange={v => store.setRadialPattern({ span: v })} suffix="°" />
+              <NumField label="Angle offset" value={radial.startAngle} onChange={v => store.setRadialPattern({ startAngle: v })} suffix="°" />
+              <NumField label="Span" min={-360} max={360} value={radial.span} onChange={v => store.setRadialPattern({ span: v })} suffix="°" />
             </div>
             <div className="field-row">
               <span>Orientation</span>
               <Segmented compact value={radial.rotateWithShape ? 'rotate' : 'upright'} onChange={v => store.setRadialPattern({ rotateWithShape: v === 'rotate' })} options={[{ value: 'rotate', label: 'Rotate' }, { value: 'upright', label: 'Upright' }]} />
             </div>
-            <div className="formula-box">
+            <details className="pattern-math"><summary>Rotation details</summary><div className="formula-box">
               <span>Tₖ = T(pivot) · R(θ₀ + kΔθ) · T(−pivot)</span>
-              <small>Δθ = Θ / {Math.abs(radial.span) >= 359.999 ? radial.copies + 1 : radial.copies} · {radial.rotateWithShape ? 'orientation follows tangent' : 'orientation locked at 0°'}</small>
-            </div>
+              <small>Δθ = Θ / {Math.abs(radial.span)>=359.999 ? radial.copies+(layout?.reservesSource?1:0) : radial.copies} · {radial.rotateWithShape ? 'orientation rotates by each copy angle' : 'original orientation preserved'}</small>
+            </div></details>
             <button className="apply-btn" disabled={!primary} onClick={() => store.applyRadialPattern()}>
               <Sparkles size={16} />
               <span>Apply radial array</span>
-              <kbd>{radial.copies}</kbd>
+              <kbd>{radial.copies * selected.length}</kbd>
             </button>
           </Section>
-          <div className="pattern-detail"><CircleDot size={13} /><span>Rotate with shape produces tangential orientation. Upright keeps every copy at its original angle while orbiting the pivot.</span></div>
+          <div className="pattern-detail"><CircleDot size={13} /><span>Rotate turns the artwork by its orbit angle. Upright preserves its original orientation. Positive spans run clockwise; negative spans run counterclockwise. The original stays selected after Apply.</span></div>
         </>
       )}
     </div>

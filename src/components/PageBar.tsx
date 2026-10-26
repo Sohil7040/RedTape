@@ -96,19 +96,11 @@ export default function PageBar({ state, store }: Props) {
           title="Add New Sheet / Page to Document"
         >
           <Plus size={13} />
-          <span>New Page</span>
+          <span>Add sheet</span>
         </button>
       </div>
 
-      <div className="sheet-bar-right">
-        {wasmOn && (
-          <span className="wasm-pill" title="WebAssembly active: Accelerating toolpaths, cipher & hatch operations">
-            <Cpu size={11} />
-            <span>WASM ACCELERATED</span>
-            <i className="wasm-led" />
-          </span>
-        )}
-      </div>
+
     </div>
   )
 }

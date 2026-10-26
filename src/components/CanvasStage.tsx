@@ -117,6 +117,7 @@ export default function CanvasStage({ state, store }: Props) {
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
+      if(e.target instanceof Element && e.target.closest('dialog,[role="dialog"]'))return
       if (e.code === 'Space' && !isEditable(e.target)) {
         if (!spaceDown.current) {
           spaceDown.current = true
@@ -481,8 +482,8 @@ export default function CanvasStage({ state, store }: Props) {
       const p = snapped ? { x: snapped.x, y: snapped.y } : world
       store.setSnap(snapped, [])
       if (st.knife.mode === 'line') {
-        store.setDraft({ type: 'knife', mode: 'line', anchors: [p], cursor: p, drawing: true })
-        action.current = { type: 'knife-line', start: p, pointerId: e.pointerId }
+        const start=store.beginKnifeLine(p)
+        action.current = { type: 'knife-line', start, pointerId: e.pointerId }
       } else if (st.knife.mode === 'freehand') {
         store.setDraft({ type: 'knife', mode: 'freehand', anchors: [p], cursor: p, drawing: true })
         action.current = { type: 'knife-free', pointerId: e.pointerId }
@@ -521,6 +522,10 @@ export default function CanvasStage({ state, store }: Props) {
     const a = action.current
 
     if (!a) {
+      if(st.tool==='knife' && st.draft?.type==='knife' && !st.draft.drawing) {
+        const hit=snapFor(world,new Set()),p=hit?{x:hit.x,y:hit.y}:world
+        store.setDraft({...st.draft,cursor:p});store.setSnap(hit,[])
+      }
       if (e.buttons === 0) updateHover(screen, world)
       updateCursor(screen, st)
       return
@@ -792,9 +797,9 @@ export default function CanvasStage({ state, store }: Props) {
     }
 
     if (a.type === 'knife-line') {
-      const d = st.draft
-      if (d?.type === 'knife' && d.anchors.length >= 2 && dist(d.anchors[0], d.anchors[1]) > 1) commitKnife()
-      else { store.setDraft(null); store.setSnap(null) }
+      const hit=snapFor(world,new Set()),p=hit?{x:hit.x,y:hit.y}:world
+      store.finishKnifeLine(p)
+      store.setSnap(null)
       return
     }
 
@@ -811,12 +816,7 @@ export default function CanvasStage({ state, store }: Props) {
   }
 
   const commitKnife = () => {
-    const st = store.getState()
-    const d = st.draft
-    if (d?.type !== 'knife') return
-    const pts = d.mode === 'bezier' ? smoothCutPath(d.anchors) : d.anchors
-    if (pts.length < 2) { store.setDraft(null); return }
-    store.commitCut(pts)
+    store.commitKnifeDraft()
     store.setSnap(null, [])
   }
 

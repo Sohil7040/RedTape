@@ -52,6 +52,13 @@ export function encodeRuidaCoord5(val: number): number[] {
   return [28n, 21n, 14n, 7n, 0n].map(shift => Number((v >> shift) & 127n))
 }
 
+/** Signed 14-bit relative micrometres, as used by the native CIR.RD fixture. */
+export function encodeRuidaDelta2(delta: number): number[] {
+  if (!Number.isInteger(delta) || delta < -8192 || delta > 8191) throw new Error('Invalid Ruida relative coordinate')
+  const value = delta < 0 ? delta + 16384 : delta
+  return [(value >> 7) & 127, value & 127]
+}
+
 /**
  * Encode speed as a five-byte, 7-bit big-endian micrometers/sec value.
  * E.g., 30 mm/s = 30,000 um/s -> [0, 0, 1, 0x6a, 0x30]
@@ -204,9 +211,16 @@ export function buildJobRD(doc: DocumentModel, customFilename = doc.name): Uint8
       activeLayer = index
     }
     for (let pass = 0; pass < path.passes; pass++) {
+      let previous: Pt | undefined
       points.forEach((p, i) => {
         const q = mapPt(p)
-        emit(i === 0 ? 0x88 : 0xa8, ...encodeRuidaCoord5(q.x), ...encodeRuidaCoord5(q.y))
+        // Difference already-rounded absolute coordinates: rounding deltas in
+        // world space accumulates drift over a long sequence of short vectors.
+        const dx = q.x - (previous?.x ?? q.x), dy = q.y - (previous?.y ?? q.y)
+        if (i && dx >= -8192 && dx <= 8191 && dy >= -8192 && dy <= 8191) {
+          emit(0xa9, ...encodeRuidaDelta2(dx), ...encodeRuidaDelta2(dy))
+        } else emit(i === 0 ? 0x88 : 0xa8, ...encodeRuidaCoord5(q.x), ...encodeRuidaCoord5(q.y))
+        previous = q
         if (i) cutLength += Math.hypot(p.x - points[i - 1].x, p.y - points[i - 1].y)
       })
     }

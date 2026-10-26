@@ -1,16 +1,13 @@
 import { ReactNode, useEffect, useRef, useState } from 'react'
 import { ChevronDown, LucideIcon } from 'lucide-react'
 
-export function Section({ title, action, children, className = '' }: { title: string; action?: ReactNode; children: ReactNode; className?: string }) {
-  return (
-    <section className={`panel-section ${className}`}>
-      <header className="section-head">
-        <h3>{title}</h3>
-        {action && <div className="section-action">{action}</div>}
-      </header>
-      <div className="section-body">{children}</div>
-    </section>
-  )
+export function Section({ title, action, children, className = '', defaultOpen = true }: { title: string; action?: ReactNode; children: ReactNode; className?: string; defaultOpen?: boolean }) {
+  const key = `corelith.section.${title}`
+  const [open,setOpen] = useState(() => { try { const value=localStorage.getItem(key); return value===null?defaultOpen:value==='true' } catch {return defaultOpen} })
+  return <section className={`panel-section ${className}`}>
+    <header className="section-head"><button className="section-toggle" aria-expanded={open} onClick={()=>{setOpen(!open);try{localStorage.setItem(key,String(!open))}catch{}}}><ChevronDown size={13} className={open?'':'closed'}/><h3>{title}</h3></button>{action&&<div className="section-action">{action}</div>}</header>
+    <div hidden={!open} className="section-body">{children}</div>
+  </section>
 }
 
 export function IconButton({ icon: Icon, label, onClick, disabled, active, size = 16, className = '' }: {
@@ -28,8 +25,11 @@ export function NumField({ value, onChange, label, suffix, step = 1, min = -1e6,
 }) {
   const [text, setText] = useState(format(value, precision))
   const focused = useRef(false)
+  const edited = useRef(false)
   useEffect(() => { if (!focused.current) setText(format(value, precision)) }, [value, precision])
   const commit = (raw: string) => {
+    if (!edited.current) { setText(format(value, precision)); return }
+    edited.current = false
     const n = raw.trim() ? Number(raw.trim()) : NaN
     if (Number.isFinite(n)) { const next = Math.min(max, Math.max(min, n)); setText(format(next, precision)); if (next !== value) onChange(next) }
     else setText(format(value, precision))
@@ -42,13 +42,14 @@ export function NumField({ value, onChange, label, suffix, step = 1, min = -1e6,
         inputMode="decimal"
         value={text}
         disabled={disabled}
-        onFocus={() => { focused.current = true }}
+        onFocus={() => { focused.current = true; edited.current = false }}
         onBlur={() => { focused.current = false; commit(text) }}
-        onChange={e => setText(e.target.value)}
+        onChange={e => { edited.current = true; setText(e.target.value) }}
         onKeyDown={e => {
+          if (e.key === 'Escape') { edited.current = false; setText(format(value, precision)); (e.target as HTMLInputElement).blur(); return }
           if (e.key === 'Enter') { (e.target as HTMLInputElement).blur() }
-          if (e.key === 'ArrowUp') { e.preventDefault(); const n = text.trim() && Number.isFinite(Number(text)) ? Number(text) : value; onChange(Math.min(max, n + (e.shiftKey ? step * 10 : step))); setText(format(Math.min(max, n + (e.shiftKey ? step * 10 : step)), precision)) }
-          if (e.key === 'ArrowDown') { e.preventDefault(); const n = text.trim() && Number.isFinite(Number(text)) ? Number(text) : value; onChange(Math.max(min, n - (e.shiftKey ? step * 10 : step))); setText(format(Math.max(min, n - (e.shiftKey ? step * 10 : step)), precision)) }
+          if (e.key === 'ArrowUp') { edited.current = false; e.preventDefault(); const n = text.trim() && Number.isFinite(Number(text)) ? Number(text) : value; onChange(Math.min(max, n + (e.shiftKey ? step * 10 : step))); setText(format(Math.min(max, n + (e.shiftKey ? step * 10 : step)), precision)) }
+          if (e.key === 'ArrowDown') { edited.current = false; e.preventDefault(); const n = text.trim() && Number.isFinite(Number(text)) ? Number(text) : value; onChange(Math.max(min, n - (e.shiftKey ? step * 10 : step))); setText(format(Math.max(min, n - (e.shiftKey ? step * 10 : step)), precision)) }
         }}
       />
       {suffix && <span className="num-suffix">{suffix}</span>}
@@ -177,4 +178,27 @@ export function EmptyHint({ icon: Icon, title, body }: { icon: LucideIcon; title
 
 export function Kbd({ children }: { children: ReactNode }) {
   return <kbd>{children}</kbd>
+}
+
+/** Focus restoration and containment for the existing custom dialogs. */
+export function useModalFocus(open: boolean, onClose: () => void) {
+  const ref=useRef<HTMLDivElement>(null)
+  useEffect(()=>{
+    if(!open)return
+    const previous=document.activeElement as HTMLElement|null, el=ref.current
+    const items=()=>Array.from(el?.querySelectorAll<HTMLElement>('button:not(:disabled),input:not(:disabled),select:not(:disabled),textarea:not(:disabled),[tabindex="0"]')??[]).filter(item=>item.getClientRects().length>0)
+    ;(items()[0]??el)?.focus()
+    const key=(e:KeyboardEvent)=>{
+      if(e.key==='Escape'){e.preventDefault();e.stopPropagation();onClose()}
+      if(e.key==='Tab'){
+        const list=items(),first=list[0],last=list.at(-1)
+        if(!first){e.preventDefault();el?.focus()}
+        else if(e.shiftKey&&document.activeElement===first){e.preventDefault();last?.focus()}
+        else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus()}
+      }
+    }
+    el?.addEventListener('keydown',key)
+    return()=>{el?.removeEventListener('keydown',key);previous?.focus()}
+  },[open])
+  return ref
 }

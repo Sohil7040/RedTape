@@ -1,12 +1,14 @@
 # RDWorks path and scoring comparison — 26 October 2026
 
+This report records its implementation checkpoint. For the latest release, test totals, blank startup and follow-up repairs, see [current status](CURRENT_STATUS.md). The later [Knife/pattern and native upload audit](KNIFE_PATTERN_UPLOAD_FIXES.md) supplements the findings below.
+
 ## Evidence
 
 - [Ruida RDWorks manual, V1.3](https://www.ruidacontroller.com/wp-content/uploads/2021/10/RDWork-Laser-Engraving-Cutting-Software-V1.3.pdf), sections 2.13.1–2.13.3, 4.2, 4.7 and 4.10.2. Imported/drawn curves do not get entry/exit leads by default; those are explicitly enabled. Path optimization reorders vectors. Cutting power follows speed between the layer's minimum and maximum values.
 - Local native RDWorks files previously retrieved read-only from this controller: `tests/fixtures/controller/20MMSQR.RD`, `CIR.RD` and `MOREMORE.RD`. Their header and runtime speed/power records agree.
 - [Ruida encoder implementation](https://github.com/jnweiger/ruida-laser/blob/master/src/ruida.py) and [Meerk40t Ruida command definitions](https://github.com/meerk40t/meerk40t/blob/main/meerk40t/ruida/rdjob.py) cross-check vector move/cut records, layer/runtime power fields, speed fields and explicit air-assist on/off flags.
 
-The source code of RDWorks itself was not available or run. This comparison uses the manufacturer's documentation and native output, not a claim of reproducing its proprietary optimizer.
+The original RDWorks source project is unavailable. This initial comparison used the manufacturer's documentation and native output. The later [REA/Ghidra investigation](RDWORKS_REVERSE_ENGINEERING.md) recovered and integrated selected native curve arithmetic, improved machining sampling and added native relative burn moves. It does not establish full optimizer or physical cutting equivalence.
 
 ## Repaired path handling
 

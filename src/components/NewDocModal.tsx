@@ -1,3 +1,4 @@
+import { useModalFocus } from './ui'
 import { useState } from 'react'
 import { FilePlus2, X, Check, Grid2X2 } from 'lucide-react'
 import { EditorStore } from '../core/store'
@@ -63,6 +64,7 @@ export default function NewDocModal({ open, onClose, store }: Props) {
   const [width, setWidth] = useState<number>(RUIDA_HARDWARE_LIMITS.bedWidth)
   const [height, setHeight] = useState<number>(RUIDA_HARDWARE_LIMITS.bedHeight)
 
+  const focusRef=useModalFocus(open,onClose)
   if (!open) return null
 
   const handleSelectPreset = (p: Preset) => {
@@ -83,7 +85,7 @@ export default function NewDocModal({ open, onClose, store }: Props) {
 
   return (
     <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal-card new-doc-modal" onClick={e => e.stopPropagation()}>
+      <div ref={focusRef} role="dialog" aria-modal="true" aria-label="New document" tabIndex={-1} className="modal-card new-doc-modal" onClick={e => e.stopPropagation()}>
         <div className="modal-head">
           <div className="modal-title-row">
             <FilePlus2 size={16} className="modal-icon" />

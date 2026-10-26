@@ -1,12 +1,13 @@
 import { X, Orbit, Github, Sparkles } from 'lucide-react'
-import { Kbd } from './ui'
+import { Kbd, useModalFocus } from './ui'
 
 export default function AboutModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const focusRef=useModalFocus(open,onClose)
   if (!open) return null
   return (
     <div className="modal-scrim" onClick={onClose}>
-      <div className="about-modal" onClick={e => e.stopPropagation()}>
-        <button className="modal-close" onClick={onClose}><X size={16} /></button>
+      <div ref={focusRef} role="dialog" aria-modal="true" aria-label="About Corelith" tabIndex={-1} className="about-modal" onClick={e => e.stopPropagation()}>
+        <button aria-label="Close About" className="modal-close" onClick={onClose}><X size={16} /></button>
         <div className="about-mark"><span /><i /></div>
         <span className="eyebrow">CORELITH / CORE ALGORITHMS</span>
         <h2>A vector laboratory built on geometry.</h2>

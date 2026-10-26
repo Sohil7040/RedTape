@@ -2,7 +2,15 @@
 
 ## Follow-up — 26 October 2026
 
-Latest implementation verification: **60 JavaScript + 10 Python tests passed**, production build passed. Counts in earlier entries below describe those earlier checkpoints.
+Latest implementation verification: **99 JavaScript + 10 Python tests passed**, production build passed. Counts in earlier entries below describe those earlier checkpoints.
+
+Current installed release: `2026-10-26T12-36-19-596Z`, served bundle `index-shWk_QUb.js`, port 5188. Startup opens a blank sheet; **File → Restore last autosave** explicitly recovers the previous local session. The untouched blank startup is not autosaved over previous work. See [current status](CURRENT_STATUS.md) for present behavior and limitations.
+
+## Historical implementation checkpoints
+
+UI redesign: implemented three workspaces, searchable Objects/Sheets, contextual progressive inspector, light/dark themes, truthful autosave, command search, aspect-lock/fitting and grouped export dialogs. Laser operations are expandable; optimization/nesting, preview/validation and connection review are separated. Readback mismatch and unavailable verification have distinct outcomes. **100 tests and production build pass**. Installed release `2026-10-26T11-46-04-978Z` passed launcher readiness and serves the tested bundle. Source/project compatibility, prior releases and original Audit Workflow are preserved; no cutter access occurred. See [redesign audit](ui-redesign-audit.md) and [full report/screenshots/changed files](ui-redesign-report.md).
+
+Corel drawing/curve-quality follow-up: mounted the missing property bar, exposed Knife and pattern controls, simplified snapping and advanced effects, repaired phantom closing-edge intersections, tangent detection, hidden/locked alignment guides, Knife corner handling and shared multi-object pattern transforms. Actual selected native curve arithmetic was decompiled with REA/Ghidra and integrated; adaptive machining curves and curved DXF imports reduce polygon artifacts. Quantization-safe relative burn moves match the native command style. Independent 25 mm circle deviation improved from 0.063060 mm to 0.003894 mm. **88 tests and build pass**; browser verified patterns, actual Knife split and undo restoration. Installed release `2026-10-26T11-03-08-910Z` preserves previous releases; the verified idle backend was restarted and launcher readiness passed. No cutter access or physical comparison cut occurred. See [evidence, metrics and limits](RDWORKS_REVERSE_ENGINEERING.md).
 
 Image/PDF import now provides local PNG/JPEG/WebP/BMP/GIF decoding and selected-page PDF rendering, with size, threshold, inversion, outline cutting and filled vector engraving. Imports preserve holes, islands and transparent gaps, create editable paths on the chosen Cut/Engrave operation, and undo as one action. PDF.js resources are bundled offline, and desktop `.mjs` MIME handling was repaired. PDF artwork is rendered then traced at a maximum 1024-pixel side; lossless PDF vectors and grayscale/native raster engraving remain unsupported. See [the import guide](IMAGE_PDF_IMPORT.md). Browser checks covered PNG modes, PDF pages, import/export readiness and undo; the installed production build also rendered both PDF pages. Desktop release `2026-10-26T09-26-44-613Z` was installed, its verified idle previous backend was restarted, and launcher `--check` passed. Original artwork and prior releases were preserved.
 
@@ -113,3 +121,15 @@ This is a broad repair/audit of a prototype, not a guarantee that every possible
 - Sheet geometry/active layers are independent; job-wide production options such as origin, hatch defaults, kerf and leads are shared. Older projects with multiple page tabs but one artwork list migrate that artwork onto the active sheet; formerly empty/shared tabs become independent empty sheets.
 - PNG export is limited to 64 megapixels / 16,384 pixels per side. SVG is available for large sheets. Decorative gradient/mesh/pattern effects do not become laser power modulation.
 - The transfer ledger is local and in memory, and the saved machine profile is specific to this EVA controller. If another controller does not provide FTP readback, the UI reports the upload as acknowledged with verification unavailable. It does not claim byte-verified storage.
+
+## Knife, circular patterns and upload follow-up — 26 October 2026
+
+Repaired 2-point Knife gestures and short drags, refined curve crossings, corrected custom-radius full-ring spacing, replaced decorative circular preview with actual geometry and prevented repeated Apply selection multiplication. Native RDWorks transfer evidence supports the existing uploader; no protocol changes or cutter access. **96 JavaScript + 10 Python tests pass**, production build passes. See [details and evidence](KNIFE_PATTERN_UPLOAD_FIXES.md).
+
+## Clean startup — 26 October 2026
+
+Removed automatic showcase/autosave opening. Startup now uses one empty sheet with no selection or draft. Untouched startup does not overwrite the prior autosave; File → Restore last autosave loads it explicitly and can be undone. Autosaving resumes on document changes. Browser checked recovery of the two-object Audit Workflow and a subsequent blank reload. **97 JavaScript + 10 Python tests passed**, production build passed. Installed release and served bundle are listed at the top. Screenshot: [clean startup](clean-startup.png). No cutter access.
+
+## Circle sizing — 26 October 2026
+
+Fixed numeric-field blur applying rounded display values despite no edit. Added explicit Make circle for single ellipses: current width becomes diameter, centre and appearance are preserved, and proportional sizing is enabled. Clarified aspect locking, which preserves an oval ratio rather than forcing equal dimensions. Browser verified no added undo edit on unchanged field focus/blur, 25 × 25 mm dimensions and restoration of the original artwork. **99 JavaScript + 10 Python tests and production build pass**. Current installed version is listed above. No cutter access.
